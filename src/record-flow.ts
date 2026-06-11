@@ -7,7 +7,7 @@ import { hideStepCaption, pauseForVideo, showStepCaption } from './caption.js';
 import { CAPTION_HOLD_MS, POST_STEP_HOLD_MS, VIDEO_SCROLL_DURATION_MS, VIEWPORT } from './constants.js';
 import { clearHighlights, highlightLocator, injectHighlightStyles } from './highlight.js';
 import { resolveLocator } from './locators.js';
-import { dismissCookieBanner } from './overlays.js';
+import { dismissCookieBanner, waitForPageReady } from './overlays.js';
 import {
   measureScrollDistance,
   scrollDurationForDistance,
@@ -92,21 +92,41 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
   };
 
   const showCaption = isVideo && shouldShowVideoCaption(step);
-  if (showCaption && videoClock) {
+  const deferCaption = showCaption && step.action === 'goto';
+
+  if (showCaption && !deferCaption && videoClock) {
     recorded.video_start_ms = Date.now() - videoClock.startedAt;
     await showStepCaption(page, stepNumber, step.title, step.description);
     await pauseForVideo(page, CAPTION_HOLD_MS);
   }
 
   switch (step.action) {
-    case 'goto':
-      await page.goto(step.url!, { waitUntil: 'domcontentloaded' });
+    case 'goto': {
+      const targetUrl = step.url!;
+      const onPage =
+        page.url() === targetUrl ||
+        page.url().replace(/\/$/, '') === targetUrl.replace(/\/$/, '');
+
+      if (!onPage) {
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+      }
       await dismissCookieBanner(page);
+      if (step.wait_for) {
+        await resolveLocator(page, step.wait_for).waitFor({ state: 'visible', timeout: 15_000 });
+      } else if (isVideo) {
+        await waitForPageReady(page);
+      }
       if (isVideo) {
         await updateBrowserChromeUrl(page);
-        await pauseForVideo(page, 1_500);
+        await pauseForVideo(page, 400);
+      }
+      if (deferCaption && videoClock) {
+        recorded.video_start_ms = Date.now() - videoClock.startedAt;
+        await showStepCaption(page, stepNumber, step.title, step.description);
+        await pauseForVideo(page, CAPTION_HOLD_MS);
       }
       break;
+    }
 
     case 'click_optional': {
       if (step.locator) {
@@ -212,7 +232,13 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
   const page = await context.newPage();
   await enableBrowserChrome(page);
   await injectHighlightStyles(page);
-  await dismissCookieBanner(page);
+
+  const firstGoto = flow.steps.find((step) => step.action === 'goto' && step.url);
+  if (firstGoto?.url) {
+    await page.goto(firstGoto.url, { waitUntil: 'domcontentloaded' });
+    await dismissCookieBanner(page);
+    await waitForPageReady(page);
+  }
 
   const videoClock = { startedAt: Date.now() };
   const scrollDurationMs = flow.video?.scroll_duration_ms ?? VIDEO_SCROLL_DURATION_MS;

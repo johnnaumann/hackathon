@@ -1,8 +1,8 @@
 name: contact-from-home
 title: How to reach the GRIMME contact form from the home page
 description: >
-  Walkthrough for finding the contact form on grimme.com starting from the
-  English home page.
+  Walkthrough for finding the contact form on grimme.com using the navigation
+  menu from the English home page.
 site: https://grimme.com/en
 output_dir: output/contact-from-home
 
@@ -13,54 +13,50 @@ steps:
   - id: home
     action: goto
     url: https://grimme.com/en
+    wait_for:
+      role: button
+      name: Open navigation
     title: Open the GRIMME home page
     description: >
-      Navigate to the English home page at grimme.com/en. This is the starting
-      point for all public site navigation.
+      Start on the GRIMME English home page. The main navigation menu is in the
+      top right corner of the page.
     screenshot: fullPage
 
-  - id: accept-cookies
-    action: click_optional
+  - id: open-menu
+    action: click
     locator:
       role: button
-      name: Accept all
-    title: Accept cookies (if prompted)
+      name: Open navigation
+    title: Open the navigation menu
     description: >
-      If a cookie consent banner appears, click **Accept all** so the page
-      displays normally. This step is skipped automatically when no banner is shown.
-    screenshot: none
-
-  - id: scroll-to-contact
-    action: scroll_to
-    locator:
-      role: heading
-      name: Your direct line to us
-    title: Scroll to the contact section
-    description: >
-      On the home page, scroll down to the **Your direct line to us** section
-      near the bottom. Here you will find phone, email, and the contact form link.
+      Click the **menu button** in the top right corner to open the site
+      navigation.
     highlight: true
     screenshot: viewport
 
-  - id: open-contact-form
+  - id: click-contact
     action: click
     locator:
       role: link
-      name: Open form
-    title: Open the contact form
+      name: Contact
+      within:
+        role: dialog
+    title: Choose Contact from the menu
     description: >
-      In the contact section, click **Open form** under "Use our contact form"
-      to go to the GRIMME contact page.
+      In the menu that opens, click **Contact**. The page will scroll to the
+      contact form section.
     highlight: true
     screenshot: viewport
 
-  - id: contact-page
+  - id: contact-form
     action: assert_visible
     locator:
       role: heading
-      name: Your Service - Contacts
-    title: Confirm you are on the contact page
+      name: Contact
+      exact: true
+    title: View the contact form
     description: >
-      You should now see the **Your Service - Contacts** page with the enquiry
-      form and GRIMME contact details.
-    screenshot: fullPage
+      You should now see the **Contact** section with the enquiry form and
+      GRIMME service contact details.
+    highlight: true
+    screenshot: viewport

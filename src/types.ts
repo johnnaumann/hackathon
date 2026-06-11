@@ -1,13 +1,15 @@
 export type LocatorSpec =
-  | { role: string; name: string; exact?: boolean }
-  | { text: string; exact?: boolean }
-  | { css: string };
+  | { role: string; name: string; exact?: boolean; within?: LocatorSpec }
+  | { text: string; exact?: boolean; within?: LocatorSpec }
+  | { css: string; within?: LocatorSpec };
 
 export type FlowStep = {
   id: string;
   action: 'goto' | 'click' | 'click_optional' | 'scroll_to' | 'assert_visible';
   url?: string;
   locator?: LocatorSpec;
+  /** Wait for this element after navigation before showing the step caption */
+  wait_for?: LocatorSpec;
   title: string;
   description: string;
   highlight?: boolean;
