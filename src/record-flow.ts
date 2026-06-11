@@ -5,9 +5,20 @@ import { parse as parseYaml } from 'yaml';
 import { enableBrowserChrome, updateBrowserChromeUrl } from './browser-chrome.js';
 import { hideStepCaption, pauseForVideo, showStepCaption } from './caption.js';
 import { CAPTION_HOLD_MS, POST_STEP_HOLD_MS, VIDEO_SCROLL_DURATION_MS, VIEWPORT } from './constants.js';
-import { clearHighlights, highlightLocator, injectHighlightStyles } from './highlight.js';
+import {
+  clearHighlights,
+  DEFAULT_HIGHLIGHT_COLOR,
+  highlightLocator,
+  injectHighlightStyles,
+  showClickPulse,
+} from './highlight.js';
 import { resolveLocator } from './locators.js';
-import { dismissCookieBanner, scrollToTop, waitForPageReady } from './overlays.js';
+import {
+  clearCmpOverlay,
+  ensureAtTop,
+  waitAndDismissCookieBanner,
+  waitForPageReady,
+} from './overlays.js';
 import {
   measureScrollDistance,
   scrollDurationForDistance,
@@ -57,6 +68,12 @@ async function loadFlow(flowFile = DEFAULT_FLOW): Promise<FlowDefinition> {
 function shouldShowVideoCaption(step: FlowStep): boolean {
   if (step.video_caption !== undefined) return step.video_caption;
   return step.screenshot !== 'none';
+}
+
+async function emphasizeClickTarget(page: Page, locator: import('@playwright/test').Locator, isVideo: boolean) {
+  if (!isVideo) return;
+  await showClickPulse(page, locator);
+  await page.waitForTimeout(350);
 }
 
 async function captureStepScreenshot(
@@ -110,15 +127,15 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
 
       if (!onPage) {
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+        await waitAndDismissCookieBanner(page);
       }
-      await dismissCookieBanner(page);
-      await scrollToTop(page);
+      await ensureAtTop(page);
       if (step.wait_for) {
         await resolveLocator(page, step.wait_for).waitFor({ state: 'visible', timeout: 15_000 });
       } else if (isVideo) {
         await waitForPageReady(page);
-        await scrollToTop(page);
       }
+      await ensureAtTop(page);
       if (isVideo) {
         await updateBrowserChromeUrl(page);
         await pauseForVideo(page, 400);
@@ -148,6 +165,7 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
     case 'click': {
       if (!step.locator) throw new Error(`Step ${step.id} requires a locator`);
       const locator = resolveLocator(page, step.locator);
+      await clearCmpOverlay(page);
       if (step.highlight) {
         await highlightLocator(locator);
       }
@@ -160,10 +178,11 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         await pauseForVideo(page, 400);
       }
       if (!isVideo) {
-        await dismissCookieBanner(page);
+        await clearCmpOverlay(page);
         recorded.screenshot = await captureStepScreenshot(page, outputDir, step);
-      } else {
-        await dismissCookieBanner(page);
+      }
+      if (isVideo && step.highlight) {
+        await emphasizeClickTarget(page, locator, isVideo);
       }
       await locator.click({ force: step.click_force ?? false });
       await page.waitForLoadState('domcontentloaded');
@@ -226,7 +245,10 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       if (isVideo) {
         await pauseForVideo(page, 400);
       }
-      await dismissCookieBanner(page);
+      await clearCmpOverlay(page);
+      if (isVideo && step.highlight) {
+        await emphasizeClickTarget(page, locator, isVideo);
+      }
       await locator.click({ force: step.click_force ?? true });
       await locator.fill('');
       const typeDelay = step.type_delay_ms ?? (isVideo ? 65 : 0);
@@ -267,6 +289,8 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
   const videoDir = path.join(outputDir, 'video-raw');
   await mkdir(videoDir, { recursive: true });
 
+  const showActions = flow.video?.show_actions ?? false;
+  const highlightColor = flow.video?.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR;
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: VIEWPORT,
@@ -274,23 +298,31 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
     recordVideo: {
       dir: videoDir,
       size: VIEWPORT,
+      ...(showActions
+        ? {
+            showActions:
+              typeof showActions === 'object'
+                ? showActions
+                : { duration: 900, position: 'top-right' as const, fontSize: 22 },
+          }
+        : {}),
     },
   });
   const page = await context.newPage();
   const recordStartedAt = Date.now();
   await enableBrowserChrome(page);
-  await injectHighlightStyles(page);
+  await injectHighlightStyles(page, highlightColor);
 
   const firstGoto = flow.steps.find((step) => step.action === 'goto' && step.url);
   if (firstGoto?.url) {
     await page.goto(firstGoto.url, { waitUntil: 'domcontentloaded' });
-    await dismissCookieBanner(page);
+    await waitAndDismissCookieBanner(page);
     await waitForPageReady(page);
-    await scrollToTop(page);
-    await page.waitForTimeout(400);
+    await ensureAtTop(page);
   }
 
   const trimStartMs = Date.now() - recordStartedAt;
+  await ensureAtTop(page);
   const videoClock = { startedAt: Date.now() };
   const scrollDurationMs = flow.video?.scroll_duration_ms ?? VIDEO_SCROLL_DURATION_MS;
   const recordedSteps: RecordedStep[] = [];
@@ -331,15 +363,15 @@ async function runScreenshotPass(
     locale: 'en-GB',
   });
   const page = await context.newPage();
-  await injectHighlightStyles(page);
+  const highlightColor = flow.video?.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR;
+  await injectHighlightStyles(page, highlightColor);
 
   const firstGoto = flow.steps.find((step) => step.action === 'goto' && step.url);
   if (firstGoto?.url) {
     await page.goto(firstGoto.url, { waitUntil: 'domcontentloaded' });
-    await dismissCookieBanner(page);
+    await waitAndDismissCookieBanner(page);
     await waitForPageReady(page);
-    await scrollToTop(page);
-    await page.waitForTimeout(400);
+    await ensureAtTop(page);
   }
 
   const screenshots = new Map<string, string | undefined>();

@@ -52,6 +52,17 @@ export type FlowDefinition = {
     voice?: string;
     /** Generate AI voiceover from captions.srt after recording */
     voiceover?: boolean;
+    /**
+     * Playwright click/action annotations in the recording (highlights interacted
+     * elements with a label). Defaults to true.
+     */
+    show_actions?: boolean | {
+      duration?: number;
+      position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right';
+      fontSize?: number;
+    };
+    /** Element outline and click-pulse colour (default: #F5C518 yellow) */
+    highlight_color?: string;
   };
 };
 

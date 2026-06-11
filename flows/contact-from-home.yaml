@@ -13,6 +13,7 @@ video:
   music_volume_with_voice: 0.08
   voice: en-GB-SoniaNeural
   voiceover: true
+  highlight_color: "#F5C518"
 
 steps:
   - id: home
