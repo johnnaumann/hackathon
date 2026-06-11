@@ -1,42 +1,28 @@
 import { chromium } from '@playwright/test';
+import { enableBrowserChrome } from '../src/browser-chrome.js';
 import { dismissCookieBanner, scrollToTop } from '../src/overlays.js';
+import { smoothScrollToLocator } from '../src/smooth-scroll.js';
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+await enableBrowserChrome(page);
 await page.goto('https://grimme.com/en', { waitUntil: 'domcontentloaded' });
 await dismissCookieBanner(page);
 await scrollToTop(page);
-
-console.log('scrollY at home top:', await page.evaluate(() => window.scrollY));
+console.log('home scrollY', await page.evaluate(() => window.scrollY));
 
 await page.getByRole('button', { name: 'Open navigation' }).click();
 await page.getByRole('dialog').getByRole('link', { name: 'Contact' }).click();
-await page.waitForTimeout(3000);
+await page.waitForURL(/service#contact/);
+await page.waitForTimeout(1500);
+console.log('after contact click scrollY', await page.evaluate(() => window.scrollY));
 
-console.log('url:', page.url());
-console.log('scrollY after contact:', await page.evaluate(() => window.scrollY));
+const sendInquiry = page.getByRole('button', { name: 'Send inquiry' });
+await sendInquiry.waitFor({ state: 'visible', timeout: 10000 });
+console.log('send inquiry box before scroll', await sendInquiry.boundingBox());
 
-const formSelectors = [
-  'form',
-  '[id="contact"]',
-  '[id*="contact" i]',
-  'input[type="email"]',
-  'textarea',
-];
+await smoothScrollToLocator(page, sendInquiry, 3500);
+console.log('after smooth scroll scrollY', await page.evaluate(() => window.scrollY));
+console.log('send inquiry box after scroll', await sendInquiry.boundingBox());
 
-for (const sel of formSelectors) {
-  const count = await page.locator(sel).count();
-  if (count) console.log(sel, count);
-}
-
-const headings = await page.getByRole('heading').allTextContents();
-console.log('headings:', headings.slice(0, 10));
-
-const contactHeading = page.getByRole('heading', { name: 'Contact', exact: true });
-const form = page.locator('form').first();
-console.log('contact heading visible:', await contactHeading.isVisible());
-console.log('form visible:', await form.isVisible().catch(() => false));
-console.log('form box:', await form.boundingBox().catch(() => null));
-
-await page.screenshot({ path: 'output/contact-from-home/debug/probe-contact-form.png' });
 await browser.close();

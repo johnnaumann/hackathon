@@ -20,6 +20,12 @@ export type FlowStep = {
   scroll_duration_ms?: number;
   /** Smooth-scroll before click during video recording (default: true) */
   scroll_before?: boolean;
+  /** Force click (for animated overlays like navigation menus) */
+  click_force?: boolean;
+  /** Pause after click during video recording (ms) */
+  wait_after_ms?: number;
+  /** Wait for URL pattern after click (string or regex source) */
+  wait_for_url?: string;
 };
 
 export type FlowDefinition = {

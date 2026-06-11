@@ -162,8 +162,14 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         recorded.screenshot = await captureStepScreenshot(page, outputDir, step);
       }
       await dismissCookieBanner(page);
-      await locator.click();
+      await locator.click({ force: step.click_force ?? false });
       await page.waitForLoadState('domcontentloaded');
+      if (step.wait_for_url) {
+        await page.waitForURL(step.wait_for_url, { timeout: 15_000 });
+      }
+      if (isVideo && step.wait_after_ms) {
+        await pauseForVideo(page, step.wait_after_ms);
+      }
       if (isVideo) {
         await updateBrowserChromeUrl(page);
         await pauseForVideo(page, POST_STEP_HOLD_MS);
@@ -222,6 +228,7 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
 async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
   steps: RecordedStep[];
   rawVideoPath?: string;
+  trimStartMs: number;
 }> {
   const videoDir = path.join(outputDir, 'video-raw');
   await mkdir(videoDir, { recursive: true });
@@ -236,6 +243,7 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
     },
   });
   const page = await context.newPage();
+  const recordStartedAt = Date.now();
   await enableBrowserChrome(page);
   await injectHighlightStyles(page);
 
@@ -248,6 +256,7 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
     await page.waitForTimeout(400);
   }
 
+  const trimStartMs = Date.now() - recordStartedAt;
   const videoClock = { startedAt: Date.now() };
   const scrollDurationMs = flow.video?.scroll_duration_ms ?? VIDEO_SCROLL_DURATION_MS;
   const recordedSteps: RecordedStep[] = [];
@@ -275,7 +284,7 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
     await browser.close();
   }
 
-  return { steps: recordedSteps, rawVideoPath };
+  return { steps: recordedSteps, rawVideoPath, trimStartMs };
 }
 
 async function runScreenshotPass(
@@ -289,7 +298,6 @@ async function runScreenshotPass(
   });
   const page = await context.newPage();
   await injectHighlightStyles(page);
-  await dismissCookieBanner(page);
 
   const screenshots = new Map<string, string | undefined>();
 
@@ -317,7 +325,7 @@ export async function recordFlow(flowFile = DEFAULT_FLOW): Promise<FlowResult> {
   const outputDir = path.resolve(flow.output_dir);
   await mkdir(path.join(outputDir, 'assets'), { recursive: true });
 
-  const { steps: videoSteps, rawVideoPath } = await runVideoPass(flow, outputDir);
+  const { steps: videoSteps, rawVideoPath, trimStartMs } = await runVideoPass(flow, outputDir);
   const screenshots = await runScreenshotPass(flow, outputDir);
 
   const steps = videoSteps.map((step) => ({
@@ -332,7 +340,7 @@ export async function recordFlow(flowFile = DEFAULT_FLOW): Promise<FlowResult> {
   };
 
   if (rawVideoPath) {
-    await finalizeVideo(result, rawVideoPath);
+    await finalizeVideo(result, rawVideoPath, trimStartMs);
     result.video = {
       webm: 'flow.webm',
       captions: 'captions.srt',

@@ -8,7 +8,9 @@ test('grimme: home to contact via menu', async ({ page }) => {
   await dismissCookieBanner(page);
 
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('dialog').getByRole('link', { name: 'Contact' }).click();
+  await page.getByRole('dialog').getByRole('link', { name: 'Contact' }).click({ force: true });
+  await page.waitForURL(/service#contact/);
 
-  await expect(page.getByRole('heading', { name: 'Contact', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send inquiry' })).toBeVisible();
+  await expect(page.locator('input[id="E-mail address"]')).toBeVisible();
 });
