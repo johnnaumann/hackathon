@@ -8,13 +8,8 @@ export async function enableBrowserChrome(page: Page) {
     const mount = () => {
       if (document.getElementById(rootId)) return;
 
-      document.documentElement.classList.add('flow-doc-chrome-active');
-
       const style = document.createElement('style');
       style.textContent = `
-        html.flow-doc-chrome-active body {
-          margin-top: ${chromeHeight}px !important;
-        }
         #${rootId} {
           position: fixed;
           top: 0;

@@ -10,13 +10,15 @@ npx playwright install chromium
 npm run demo
 ```
 
-This runs the `contact-from-home` flow and writes:
+This runs the `contact-from-home` flow and writes everything under `output/contact-from-home/`:
 
-- `output/contact-from-home/guide.md` — user-facing markdown guide
-- `output/contact-from-home/assets/*.png` — screenshots with red highlights on interactive steps
-- `output/contact-from-home/flow.webm` — 16:9 viewport recording with browser chrome + step caption cards
-- `output/contact-from-home/captions.srt` — step timing file (voiceover seed, not burned into video)
-- `output/contact-from-home/flow-result.json` — machine-readable recording metadata
+- `guide.md` — user-facing markdown guide
+- `assets/*.png` — guide screenshots with red highlights
+- `flow.webm` — 16:9 viewport recording with browser chrome + step caption cards
+- `captions.srt` — step timing file (voiceover seed, not burned into video)
+- `flow-result.json` — machine-readable recording metadata
+- `video-raw/` — raw Playwright video chunks (intermediate)
+- `debug/` — probe/dev screenshots (not published)
 
 ## How it works
 

@@ -32,6 +32,7 @@ steps:
       Click the **menu button** in the top right corner to open the site
       navigation.
     highlight: true
+    scroll_before: false
     screenshot: viewport
 
   - id: click-contact

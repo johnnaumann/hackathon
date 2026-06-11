@@ -7,7 +7,7 @@ import { hideStepCaption, pauseForVideo, showStepCaption } from './caption.js';
 import { CAPTION_HOLD_MS, POST_STEP_HOLD_MS, VIDEO_SCROLL_DURATION_MS, VIEWPORT } from './constants.js';
 import { clearHighlights, highlightLocator, injectHighlightStyles } from './highlight.js';
 import { resolveLocator } from './locators.js';
-import { dismissCookieBanner, waitForPageReady } from './overlays.js';
+import { dismissCookieBanner, scrollToTop, waitForPageReady } from './overlays.js';
 import {
   measureScrollDistance,
   scrollDurationForDistance,
@@ -111,10 +111,12 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
       }
       await dismissCookieBanner(page);
+      await scrollToTop(page);
       if (step.wait_for) {
         await resolveLocator(page, step.wait_for).waitFor({ state: 'visible', timeout: 15_000 });
       } else if (isVideo) {
         await waitForPageReady(page);
+        await scrollToTop(page);
       }
       if (isVideo) {
         await updateBrowserChromeUrl(page);
@@ -148,7 +150,11 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       if (step.highlight) {
         await highlightLocator(locator);
       }
-      await scrollForRecording(page, locator, isVideo, scrollDurationMs, step);
+      if (step.scroll_before !== false) {
+        await scrollForRecording(page, locator, isVideo, scrollDurationMs, step);
+      } else if (!isVideo) {
+        await locator.scrollIntoViewIfNeeded();
+      }
       if (isVideo) {
         await pauseForVideo(page, 400);
       }
@@ -238,6 +244,8 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
     await page.goto(firstGoto.url, { waitUntil: 'domcontentloaded' });
     await dismissCookieBanner(page);
     await waitForPageReady(page);
+    await scrollToTop(page);
+    await page.waitForTimeout(400);
   }
 
   const videoClock = { startedAt: Date.now() };

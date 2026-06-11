@@ -1,11 +1,18 @@
+import { mkdir } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
+import path from 'node:path';
+import { flowDebugPath, getFlowOutputDir } from '../src/flow-paths.js';
+
+const flowFile = process.argv[2] ?? 'contact-from-home.yaml';
+const outputDir = await getFlowOutputDir(flowFile);
+const debugDir = path.join(outputDir, 'debug');
+await mkdir(debugDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.goto('https://grimme.com/en', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1500);
 
-// Usercentrics accept
 const uc = page.locator('[data-testid="uc-accept-all-button"]');
 if (await uc.count()) await uc.click({ force: true });
 else await page.getByRole('button', { name: /accept all/i }).first().click({ force: true }).catch(() => {});
@@ -26,5 +33,9 @@ console.log('final url', page.url());
 
 const headings = await page.getByRole('heading').allTextContents();
 console.log('headings', headings.slice(0, 8));
+
+const screenshotPath = flowDebugPath(outputDir, 'probe-menu.png');
+await page.screenshot({ path: screenshotPath });
+console.log('screenshot →', screenshotPath);
 
 await browser.close();

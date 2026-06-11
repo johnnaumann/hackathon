@@ -27,3 +27,12 @@ export async function waitForPageReady(page: Page) {
   await page.locator('header').waitFor({ state: 'visible', timeout: 15_000 }).catch(() => undefined);
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
 }
+
+export async function scrollToTop(page: Page) {
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  });
+  await page.waitForTimeout(150);
+}

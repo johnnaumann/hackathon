@@ -18,6 +18,8 @@ export type FlowStep = {
   video_caption?: boolean;
   /** Override eased scroll duration for this step during video recording (ms) */
   scroll_duration_ms?: number;
+  /** Smooth-scroll before click during video recording (default: true) */
+  scroll_before?: boolean;
 };
 
 export type FlowDefinition = {
