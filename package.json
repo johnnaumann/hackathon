@@ -1,0 +1,20 @@
+{
+  "name": "hackathon-flow-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "record": "tsx src/record-flow.ts",
+    "generate": "tsx src/generate-guide.ts",
+    "demo": "npm run record && npm run generate",
+    "demo:video": "npm run demo",
+    "test:flow": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "yaml": "^2.7.1"
+  }
+}
