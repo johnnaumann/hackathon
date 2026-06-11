@@ -9,8 +9,16 @@ import type { FlowDefinition } from './types.js';
 const execFileAsync = promisify(execFile);
 
 export const DEFAULT_VOICE = 'en-GB-SoniaNeural';
-/** Delay voice slightly after the on-screen caption appears. */
-const NARRATION_LEAD_MS = 200;
+/** Slightly slower than default — clearer and more natural for walkthroughs. */
+export const DEFAULT_VOICE_RATE = '-4%';
+export const DEFAULT_VOICE_PITCH = '+0Hz';
+/** Minimum gap before the next cue's narration begins. */
+const CUE_GAP_MS = 80;
+
+export type VoiceProsody = {
+  rate?: string;
+  pitch?: string;
+};
 
 export async function listEnglishFemaleVoices(): Promise<string[]> {
   const { VoicesManager } = await import('edge-tts-universal');
@@ -38,56 +46,59 @@ export async function synthesizeSpeech(
   text: string,
   voice: string,
   outputPath: string,
+  prosody: VoiceProsody = {},
 ): Promise<void> {
-  const tts = new EdgeTTS(text, voice, { rate: '+5%' });
+  const tts = new EdgeTTS(text, voice, {
+    rate: prosody.rate ?? DEFAULT_VOICE_RATE,
+    pitch: prosody.pitch ?? DEFAULT_VOICE_PITCH,
+  });
   const result = await tts.synthesize();
   const buffer = Buffer.from(await result.audio.arrayBuffer());
   await writeFile(outputPath, buffer);
 }
 
-function buildAtempoChain(speedup: number): string {
-  const filters: string[] = [];
-  let remaining = speedup;
-  while (remaining > 1.01) {
-    const step = Math.min(remaining, 2);
-    filters.push(`atempo=${step.toFixed(4)}`);
-    remaining /= step;
-  }
-  return filters.join(',');
-}
-
-/** Speed up if needed, then hard-trim so narration never bleeds into the next cue. */
-async function fitAudioToSlot(
+/**
+ * Keep narration at natural speed. If it runs past the available window, fade out
+ * gently — never time-stretch or speed up.
+ */
+async function prepareNarrationAudio(
   inputPath: string,
   outputPath: string,
-  slotSec: number,
+  maxDurationSec: number,
 ): Promise<void> {
   const duration = await getMediaDurationSeconds(inputPath);
-  const targetSec = Math.max(slotSec * 0.85, 0.45);
 
-  if (duration <= targetSec * 1.02) {
-    if (Math.abs(duration - targetSec) < 0.05) {
-      await copyFile(inputPath, outputPath);
-      return;
-    }
-    await execFileAsync('ffmpeg', [
-      '-y',
-      '-i',
-      inputPath,
-      '-filter:a',
-      `atrim=0:${targetSec.toFixed(3)},asetpts=PTS-STARTPTS`,
-      outputPath,
-    ]);
+  if (duration <= maxDurationSec + 0.02) {
+    await copyFile(inputPath, outputPath);
     return;
   }
 
-  const speedup = duration / targetSec;
-  const tempoChain = buildAtempoChain(speedup);
-  const filter = tempoChain
-    ? `${tempoChain},atrim=0:${targetSec.toFixed(3)},asetpts=PTS-STARTPTS`
-    : `atrim=0:${targetSec.toFixed(3)},asetpts=PTS-STARTPTS`;
+  const fadeDur = Math.min(0.25, maxDurationSec * 0.1);
+  const fadeStart = Math.max(0, maxDurationSec - fadeDur);
 
-  await execFileAsync('ffmpeg', ['-y', '-i', inputPath, '-filter:a', filter, outputPath]);
+  await execFileAsync('ffmpeg', [
+    '-y',
+    '-i',
+    inputPath,
+    '-filter:a',
+    `afade=t=out:st=${fadeStart.toFixed(3)}:d=${fadeDur.toFixed(3)},atrim=0:${maxDurationSec.toFixed(3)},asetpts=PTS-STARTPTS`,
+    outputPath,
+  ]);
+}
+
+function maxNarrationSeconds(
+  cue: SrtCue,
+  cueIndex: number,
+  cues: SrtCue[],
+  videoDurationSec: number,
+): number {
+  const voiceStartMs = cue.startMs;
+  const nextVoiceStartMs =
+    cueIndex + 1 < cues.length ? cues[cueIndex + 1].startMs : videoDurationSec * 1000;
+
+  const availableMs = nextVoiceStartMs - voiceStartMs - CUE_GAP_MS;
+  const slotMs = cue.endMs - cue.startMs;
+  return Math.max(0.5, Math.min(availableMs, slotMs) / 1000);
 }
 
 export async function buildVoiceoverTrack(
@@ -95,19 +106,21 @@ export async function buildVoiceoverTrack(
   voice: string,
   workDir: string,
   videoDurationSec: number,
+  prosody: VoiceProsody = {},
 ): Promise<string> {
   await mkdir(workDir, { recursive: true });
   const segmentPaths: string[] = [];
 
-  for (const cue of cues) {
+  for (let index = 0; index < cues.length; index += 1) {
+    const cue = cues[index];
     const rawPath = path.join(workDir, `cue-${cue.index}-raw.mp3`);
-    const fittedPath = path.join(workDir, `cue-${cue.index}.mp3`);
-    const slotSec = Math.max((cue.endMs - cue.startMs) / 1000, 0.5);
+    const preparedPath = path.join(workDir, `cue-${cue.index}.mp3`);
+    const maxDurationSec = maxNarrationSeconds(cue, index, cues, videoDurationSec);
     const narration = cue.title || cue.text;
 
-    await synthesizeSpeech(narration, voice, rawPath);
-    await fitAudioToSlot(rawPath, fittedPath, slotSec);
-    segmentPaths.push(fittedPath);
+    await synthesizeSpeech(narration, voice, rawPath, prosody);
+    await prepareNarrationAudio(rawPath, preparedPath, maxDurationSec);
+    segmentPaths.push(preparedPath);
   }
 
   const outputPath = path.join(workDir, 'voiceover.mp3');
@@ -117,9 +130,8 @@ export async function buildVoiceoverTrack(
   segmentPaths.forEach((_, index) => {
     const cue = cues[index];
     const label = `v${index}`;
-    const voiceStartMs = cue.startMs + NARRATION_LEAD_MS;
     filterParts.push(
-      `[${index}:a]aformat=channel_layouts=mono,adelay=${voiceStartMs}|${voiceStartMs},apad=whole_dur=${videoDurationSec.toFixed(2)}[${label}]`,
+      `[${index}:a]aformat=channel_layouts=mono,adelay=${cue.startMs}|${cue.startMs},apad=whole_dur=${videoDurationSec.toFixed(2)}[${label}]`,
     );
     mixLabels.push(`[${label}]`);
   });
@@ -166,7 +178,7 @@ export async function muxVideoMusicVoiceover(options: {
 
   const audioFilter = [
     `[1:a]volume=${musicVolume},afade=t=in:st=0:d=1.5,afade=t=out:st=${fadeOutStart}:d=2,atrim=0:${durationLabel}[music]`,
-    `[2:a]aformat=channel_layouts=mono,volume=1.15,asplit=2[vsc][vmix]`,
+    `[2:a]aformat=channel_layouts=mono,volume=1.0,asplit=2[vsc][vmix]`,
     `[music][vsc]sidechaincompress=threshold=0.02:ratio=6:attack=80:release=600:makeup=1[mduck]`,
     `[mduck][vmix]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`,
   ].join(';');
@@ -211,6 +223,10 @@ export async function generateVoiceoverForFlow(
   const srtPath = path.join(outputDir, 'captions.srt');
   const silentVideoPath = path.join(outputDir, 'flow-silent.webm');
   const voice = flow.video?.voice ?? DEFAULT_VOICE;
+  const prosody: VoiceProsody = {
+    rate: flow.video?.voice_rate ?? DEFAULT_VOICE_RATE,
+    pitch: flow.video?.voice_pitch ?? DEFAULT_VOICE_PITCH,
+  };
   const musicVolume = flow.video?.music_volume_with_voice
     ?? (flow.video?.music_volume ?? 0.45) * 0.22;
   const musicPath = path.resolve(flow.video?.music ?? 'assets/music/background.mp3');
@@ -220,8 +236,8 @@ export async function generateVoiceoverForFlow(
   const videoDurationSec = await getMediaDurationSeconds(silentVideoPath);
   const workDir = path.join(outputDir, 'voiceover-work');
 
-  console.log(`Synthesizing voiceover (${voice}) for ${cues.length} cues…`);
-  const voiceoverPath = await buildVoiceoverTrack(cues, voice, workDir, videoDurationSec);
+  console.log(`Synthesizing voiceover (${voice}, ${prosody.rate}) for ${cues.length} cues…`);
+  const voiceoverPath = await buildVoiceoverTrack(cues, voice, workDir, videoDurationSec, prosody);
 
   await muxVideoMusicVoiceover({
     silentVideoPath,

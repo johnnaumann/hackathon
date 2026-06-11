@@ -54,6 +54,10 @@ export type FlowDefinition = {
     music_volume_with_voice?: number;
     /** Edge TTS voice name (default: en-GB-SoniaNeural) */
     voice?: string;
+    /** Speech rate, e.g. "-4%" for a natural walkthrough pace (default: -4%) */
+    voice_rate?: string;
+    /** Speech pitch, e.g. "+0Hz" (default: +0Hz) */
+    voice_pitch?: string;
     /** Generate AI voiceover from captions.srt after recording */
     voiceover?: boolean;
     /**
@@ -79,6 +83,8 @@ export type RecordedStep = {
   screenshot?: string;
   url: string;
   video_start_ms?: number;
+  /** When the primary interaction (click, fill, scroll) begins */
+  video_action_ms?: number;
   video_end_ms?: number;
 };
 

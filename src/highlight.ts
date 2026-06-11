@@ -118,7 +118,7 @@ export async function markClickTarget(
   await showClickTarget(page, locator, color, opacity);
 }
 
-/** Short beat immediately before click/fill — keeps the target framed. */
+/** Re-frame the target immediately before click/fill. */
 export async function emphasizeClickTarget(
   page: Page,
   locator: Locator,
@@ -126,7 +126,6 @@ export async function emphasizeClickTarget(
   opacity: number = DEFAULT_HIGHLIGHT_OPACITY,
 ) {
   await refreshClickTarget(page, locator, color, opacity);
-  await page.waitForTimeout(200);
 }
 
 export async function clearHighlights(page: Page) {

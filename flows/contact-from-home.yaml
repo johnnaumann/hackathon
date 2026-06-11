@@ -12,6 +12,8 @@ video:
   music_volume: 0.45
   music_volume_with_voice: 0.08
   voice: en-GB-SoniaNeural
+  voice_rate: "-4%"
+  voice_pitch: "+0Hz"
   voiceover: true
   highlight_color: "#F5C518"
   highlight_opacity: 0.42
@@ -40,7 +42,7 @@ steps:
       navigation.
     highlight: true
     scroll_before: false
-    wait_after_ms: 800
+    wait_after_ms: 500
     screenshot: viewport
 
   - id: click-contact
@@ -61,7 +63,7 @@ steps:
     scroll_after:
       css: '[data-sentry-component="ContactFormContent"]'
     scroll_block: start
-    wait_after_ms: 800
+    wait_after_ms: 600
     screenshot: viewport
 
   - id: fill-email

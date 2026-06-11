@@ -14,10 +14,13 @@ import {
   markClickTarget,
 } from './highlight.js';
 import {
-  beginNarration,
-  endNarration,
+  actionBeat,
+  finishStep,
   highlightBeat,
-  holdAfterStep,
+  holdAfterAction,
+  markActionMoment,
+  pauseBeforeAction,
+  showStepLabel,
   type NarrationContext,
 } from './step-timing.js';
 import { resolveLocator } from './locators.js';
@@ -158,8 +161,9 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
           await markClickTarget(page, resolveLocator(page, step.wait_for), highlightColor, highlightOpacity);
           await highlightBeat(page);
         }
-        await beginNarration(narration);
-        await holdAfterStep(page);
+        await showStepLabel(narration);
+        await holdAfterAction(page);
+        await finishStep(narration, page);
       }
       break;
     }
@@ -200,7 +204,8 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       }
 
       if (narration && !deferNarration) {
-        await beginNarration(narration);
+        await showStepLabel(narration);
+        await pauseBeforeAction(page);
       }
 
       if (!isVideo) {
@@ -208,8 +213,13 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         recorded.screenshot = await captureStepScreenshot(page, outputDir, step);
       }
 
-      if (isVideo && step.highlight && !deferNarration) {
+      if (isVideo && step.highlight) {
         await emphasizeClickTarget(page, locator, highlightColor, highlightOpacity);
+        await actionBeat(page);
+      }
+
+      if (narration && !deferNarration) {
+        markActionMoment(narration);
       }
 
       await locator.click({ force: step.click_force ?? false });
@@ -223,10 +233,11 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         const scrollLocator = resolveLocator(page, step.scroll_after);
         await scrollLocator.waitFor({ state: 'visible', timeout: 15_000 });
         if (isVideo) {
-          await pauseForVideo(page, 300);
+          await pauseForVideo(page, 200);
         }
         if (narration && deferNarration) {
-          await beginNarration(narration);
+          await showStepLabel(narration);
+          markActionMoment(narration);
         }
         await scrollForRecording(page, scrollLocator, isVideo, scrollDurationMs, step);
       }
@@ -236,11 +247,11 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       }
       if (isVideo) {
         await updateBrowserChromeUrl(page);
-        await holdAfterStep(page);
+        await holdAfterAction(page);
       }
       recorded.url = page.url();
       if (narration) {
-        await endNarration(narration);
+        await finishStep(narration, page);
       }
       return recorded;
     }
@@ -249,15 +260,17 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       if (!step.locator) throw new Error(`Step ${step.id} requires a locator`);
       const locator = resolveLocator(page, step.locator);
       if (narration) {
-        await beginNarration(narration);
+        await showStepLabel(narration);
+        markActionMoment(narration);
       }
       await scrollForRecording(page, locator, isVideo, scrollDurationMs, step);
       if (step.highlight) {
         await markClickTarget(page, locator, highlightColor, highlightOpacity);
         if (isVideo) await highlightBeat(page);
       }
-      if (isVideo) {
-        await holdAfterStep(page);
+      if (narration) {
+        await holdAfterAction(page);
+        await finishStep(narration, page);
       }
       break;
     }
@@ -272,10 +285,9 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         if (isVideo) await highlightBeat(page);
       }
       if (narration) {
-        await beginNarration(narration);
-      }
-      if (isVideo) {
-        await holdAfterStep(page);
+        await showStepLabel(narration);
+        await holdAfterAction(page);
+        await finishStep(narration, page);
       }
       break;
     }
@@ -296,10 +308,15 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         if (isVideo) await highlightBeat(page);
       }
       if (narration) {
-        await beginNarration(narration);
+        await showStepLabel(narration);
+        await pauseBeforeAction(page);
       }
       if (isVideo && step.highlight) {
         await emphasizeClickTarget(page, locator, highlightColor, highlightOpacity);
+        await actionBeat(page);
+      }
+      if (narration) {
+        markActionMoment(narration);
       }
       await locator.evaluate((el) => {
         (el as HTMLElement).focus({ preventScroll: true });
@@ -313,12 +330,15 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         await locator.fill(step.value);
       }
       if (isVideo) {
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(150);
         await ensureFormInView(page);
-        await pauseForVideo(page, step.wait_after_ms ?? 600);
-        await holdAfterStep(page);
+        await pauseForVideo(page, step.wait_after_ms ?? 500);
+        await holdAfterAction(page);
       }
       recorded.url = page.url();
+      if (narration) {
+        await finishStep(narration, page);
+      }
       break;
     }
 
@@ -330,10 +350,6 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
     recorded.screenshot = await captureStepScreenshot(page, outputDir, step);
   }
   recorded.url = page.url();
-
-  if (narration) {
-    await endNarration(narration);
-  }
 
   return recorded;
 }
