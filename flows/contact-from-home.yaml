@@ -14,6 +14,7 @@ video:
   voice: en-GB-SoniaNeural
   voiceover: true
   highlight_color: "#F5C518"
+  highlight_opacity: 0.42
 
 steps:
   - id: home
@@ -49,37 +50,18 @@ steps:
       name: Contact
       within:
         role: dialog
-    title: Choose Contact from the menu
+    title: Open the contact enquiry form
     description: >
-      In the menu that opens, click **Contact** to go to the service page.
+      In the menu, click **Contact**. The page scrolls to the enquiry form where
+      you can enter your details.
     highlight: true
     scroll_before: false
     click_force: true
     wait_for_url: "**/service#contact"
-    wait_after_ms: 1200
-    screenshot: viewport
-
-  - id: scroll-to-form
-    action: scroll_to
-    locator:
-      role: button
-      name: Send inquiry
-    title: Open the contact enquiry form
-    description: >
-      The page scrolls to the **contact enquiry form** where you can enter your
-      details and click **Send inquiry**.
-    highlight: true
-    screenshot: viewport
-
-  - id: contact-form
-    action: assert_visible
-    locator:
-      css: '#E-mail\\ address, input[id="E-mail address"]'
-    title: Confirm the contact form is visible
-    description: >
-      You should now see the enquiry form fields including your email address
-      and message, ready to fill in.
-    highlight: true
+    scroll_after:
+      css: '[data-sentry-component="ContactFormContent"]'
+    scroll_block: start
+    wait_after_ms: 800
     screenshot: viewport
 
   - id: fill-email

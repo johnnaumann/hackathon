@@ -30,6 +30,10 @@ export type FlowStep = {
   wait_after_ms?: number;
   /** Wait for URL pattern after click (string or regex source) */
   wait_for_url?: string;
+  /** Smooth-scroll to this element after click (e.g. form on a new page) */
+  scroll_after?: LocatorSpec;
+  /** Vertical alignment when scrolling (default: center) */
+  scroll_block?: 'center' | 'start' | 'end';
 };
 
 export type FlowDefinition = {
@@ -63,6 +67,8 @@ export type FlowDefinition = {
     };
     /** Element outline and click-pulse colour (default: #F5C518 yellow) */
     highlight_color?: string;
+    /** Highlight fill opacity 0–1 (default: 0.42) */
+    highlight_opacity?: number;
   };
 };
 

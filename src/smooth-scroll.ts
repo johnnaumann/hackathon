@@ -26,9 +26,9 @@ export async function smoothScrollToLocator(
     if (block === 'center') {
       toY = fromY + rect.top - (viewportHeight - rect.height) / 2;
     } else if (block === 'start') {
-      toY = fromY + rect.top - 24;
+      toY = fromY + rect.top - 80;
     } else {
-      toY = fromY + rect.bottom - viewportHeight + 24;
+      toY = fromY + rect.bottom - viewportHeight + 80;
     }
 
     toY = Math.max(0, Math.min(toY, maxScroll));
@@ -59,13 +59,27 @@ export function scrollDurationForDistance(distancePx: number, baseMs: number): n
   return Math.round(Math.min(maxMs, Math.max(minMs, scaled)));
 }
 
-export async function measureScrollDistance(page: Page, locator: Locator): Promise<number> {
-  return locator.evaluate((element) => {
+export async function measureScrollDistance(
+  page: Page,
+  locator: Locator,
+  block: ScrollBlock = 'center',
+): Promise<number> {
+  return locator.evaluate((element, block) => {
     const rect = element.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    const targetY = window.scrollY + rect.top - (viewportHeight - rect.height) / 2;
     const maxScroll = document.documentElement.scrollHeight - viewportHeight;
+    const fromY = window.scrollY;
+
+    let targetY: number;
+    if (block === 'center') {
+      targetY = fromY + rect.top - (viewportHeight - rect.height) / 2;
+    } else if (block === 'start') {
+      targetY = fromY + rect.top - 80;
+    } else {
+      targetY = fromY + rect.bottom - viewportHeight + 80;
+    }
+
     const clamped = Math.max(0, Math.min(targetY, maxScroll));
-    return clamped - window.scrollY;
-  });
+    return clamped - fromY;
+  }, block);
 }

@@ -9,6 +9,8 @@ import type { FlowDefinition } from './types.js';
 const execFileAsync = promisify(execFile);
 
 export const DEFAULT_VOICE = 'en-GB-SoniaNeural';
+/** Delay voice slightly after the on-screen caption appears. */
+const NARRATION_LEAD_MS = 200;
 
 export async function listEnglishFemaleVoices(): Promise<string[]> {
   const { VoicesManager } = await import('edge-tts-universal');
@@ -61,7 +63,7 @@ async function fitAudioToSlot(
   slotSec: number,
 ): Promise<void> {
   const duration = await getMediaDurationSeconds(inputPath);
-  const targetSec = Math.max(slotSec * 0.95, 0.4);
+  const targetSec = Math.max(slotSec * 0.85, 0.45);
 
   if (duration <= targetSec * 1.02) {
     if (Math.abs(duration - targetSec) < 0.05) {
@@ -115,8 +117,9 @@ export async function buildVoiceoverTrack(
   segmentPaths.forEach((_, index) => {
     const cue = cues[index];
     const label = `v${index}`;
+    const voiceStartMs = cue.startMs + NARRATION_LEAD_MS;
     filterParts.push(
-      `[${index}:a]aformat=channel_layouts=mono,adelay=${cue.startMs}|${cue.startMs},apad=whole_dur=${videoDurationSec.toFixed(2)}[${label}]`,
+      `[${index}:a]aformat=channel_layouts=mono,adelay=${voiceStartMs}|${voiceStartMs},apad=whole_dur=${videoDurationSec.toFixed(2)}[${label}]`,
     );
     mixLabels.push(`[${label}]`);
   });

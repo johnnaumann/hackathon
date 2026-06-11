@@ -3,15 +3,23 @@ import path from 'node:path';
 import { chromium, type Page } from '@playwright/test';
 import { parse as parseYaml } from 'yaml';
 import { enableBrowserChrome, updateBrowserChromeUrl } from './browser-chrome.js';
-import { hideStepCaption, pauseForVideo, showStepCaption } from './caption.js';
-import { CAPTION_HOLD_MS, POST_STEP_HOLD_MS, VIDEO_SCROLL_DURATION_MS, VIEWPORT } from './constants.js';
+import { pauseForVideo } from './caption.js';
+import { VIDEO_SCROLL_DURATION_MS, VIEWPORT } from './constants.js';
 import {
   clearHighlights,
   DEFAULT_HIGHLIGHT_COLOR,
+  DEFAULT_HIGHLIGHT_OPACITY,
   emphasizeClickTarget,
   injectHighlightStyles,
   markClickTarget,
 } from './highlight.js';
+import {
+  beginNarration,
+  endNarration,
+  highlightBeat,
+  holdAfterStep,
+  type NarrationContext,
+} from './step-timing.js';
 import { resolveLocator } from './locators.js';
 import {
   clearCmpOverlay,
@@ -40,6 +48,8 @@ type RunStepOptions = {
   stepNumber: number;
   videoClock?: { startedAt: number };
   scrollDurationMs: number;
+  highlightColor: string;
+  highlightOpacity: number;
 };
 
 async function scrollForRecording(
@@ -55,9 +65,10 @@ async function scrollForRecording(
   }
 
   const baseMs = step?.scroll_duration_ms ?? scrollDurationMs;
-  const distance = await measureScrollDistance(page, locator);
+  const block = step?.scroll_block ?? 'center';
+  const distance = await measureScrollDistance(page, locator, block);
   const durationMs = scrollDurationForDistance(distance, baseMs);
-  await smoothScrollToLocator(page, locator, durationMs);
+  await smoothScrollToLocator(page, locator, durationMs, block);
 }
 
 async function loadFlow(flowFile = DEFAULT_FLOW): Promise<FlowDefinition> {
@@ -71,18 +82,16 @@ function shouldShowVideoCaption(step: FlowStep): boolean {
   return step.screenshot !== 'none';
 }
 
-const HIGHLIGHT_ACTIONS = new Set(['click', 'fill', 'scroll_to', 'assert_visible']);
-
-async function showVideoStepCaption(
+function narrationContext(
   page: Page,
   stepNumber: number,
   step: FlowStep,
-  videoClock: { startedAt: number },
+  videoClock: { startedAt: number } | undefined,
   recorded: RecordedStep,
-) {
-  recorded.video_start_ms = Date.now() - videoClock.startedAt;
-  await showStepCaption(page, stepNumber, step.title, step.description);
-  await pauseForVideo(page, CAPTION_HOLD_MS);
+  showCaption: boolean,
+): NarrationContext | null {
+  if (!showCaption || !videoClock) return null;
+  return { page, stepNumber, step, videoClock, recorded };
 }
 
 async function captureStepScreenshot(
@@ -106,7 +115,8 @@ async function captureStepScreenshot(
 }
 
 async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Promise<RecordedStep> {
-  const { mode, outputDir, stepNumber, videoClock, scrollDurationMs } = options;
+  const { mode, outputDir, stepNumber, videoClock, scrollDurationMs, highlightColor, highlightOpacity } =
+    options;
   const isVideo = mode === 'video';
 
   await clearHighlights(page);
@@ -119,13 +129,7 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
   };
 
   const showCaption = isVideo && shouldShowVideoCaption(step);
-  const deferCaption = showCaption && step.action === 'goto';
-  const deferCaptionForHighlight =
-    showCaption && step.highlight === true && HIGHLIGHT_ACTIONS.has(step.action);
-
-  if (showCaption && !deferCaption && !deferCaptionForHighlight && videoClock) {
-    await showVideoStepCaption(page, stepNumber, step, videoClock, recorded);
-  }
+  const narration = narrationContext(page, stepNumber, step, videoClock, recorded, showCaption);
 
   switch (step.action) {
     case 'goto': {
@@ -149,12 +153,13 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         await updateBrowserChromeUrl(page);
         await pauseForVideo(page, 400);
       }
-      if (deferCaption && videoClock) {
-        if (step.wait_for && isVideo) {
-          await markClickTarget(page, resolveLocator(page, step.wait_for));
-          await pauseForVideo(page, 400);
+      if (narration && isVideo) {
+        if (step.wait_for) {
+          await markClickTarget(page, resolveLocator(page, step.wait_for), highlightColor, highlightOpacity);
+          await highlightBeat(page);
         }
-        await showVideoStepCaption(page, stepNumber, step, videoClock, recorded);
+        await beginNarration(narration);
+        await holdAfterStep(page);
       }
       break;
     }
@@ -176,6 +181,8 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
     case 'click': {
       if (!step.locator) throw new Error(`Step ${step.id} requires a locator`);
       const locator = resolveLocator(page, step.locator);
+      const deferNarration = Boolean(step.scroll_after);
+
       if (step.scroll_before === false && isVideo) {
         await ensureFormInView(page);
       } else {
@@ -186,36 +193,54 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       } else if (!isVideo) {
         await locator.scrollIntoViewIfNeeded();
       }
+
       if (step.highlight) {
-        await markClickTarget(page, locator);
-        if (isVideo) await pauseForVideo(page, 350);
+        await markClickTarget(page, locator, highlightColor, highlightOpacity);
+        if (isVideo) await highlightBeat(page);
       }
-      if (showCaption && deferCaptionForHighlight && videoClock) {
-        await showVideoStepCaption(page, stepNumber, step, videoClock, recorded);
+
+      if (narration && !deferNarration) {
+        await beginNarration(narration);
       }
+
       if (!isVideo) {
         await clearCmpOverlay(page);
         recorded.screenshot = await captureStepScreenshot(page, outputDir, step);
       }
-      if (isVideo && step.highlight) {
-        await emphasizeClickTarget(page, locator);
+
+      if (isVideo && step.highlight && !deferNarration) {
+        await emphasizeClickTarget(page, locator, highlightColor, highlightOpacity);
       }
+
       await locator.click({ force: step.click_force ?? false });
+      await clearHighlights(page);
       await page.waitForLoadState('domcontentloaded');
       if (step.wait_for_url) {
         await page.waitForURL(step.wait_for_url, { timeout: 15_000 });
       }
+
+      if (step.scroll_after) {
+        const scrollLocator = resolveLocator(page, step.scroll_after);
+        await scrollLocator.waitFor({ state: 'visible', timeout: 15_000 });
+        if (isVideo) {
+          await pauseForVideo(page, 300);
+        }
+        if (narration && deferNarration) {
+          await beginNarration(narration);
+        }
+        await scrollForRecording(page, scrollLocator, isVideo, scrollDurationMs, step);
+      }
+
       if (isVideo && step.wait_after_ms) {
         await pauseForVideo(page, step.wait_after_ms);
       }
       if (isVideo) {
         await updateBrowserChromeUrl(page);
-        await pauseForVideo(page, POST_STEP_HOLD_MS);
+        await holdAfterStep(page);
       }
       recorded.url = page.url();
-      if (showCaption && videoClock) {
-        recorded.video_end_ms = Date.now() - videoClock.startedAt;
-        await hideStepCaption(page);
+      if (narration) {
+        await endNarration(narration);
       }
       return recorded;
     }
@@ -223,16 +248,16 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
     case 'scroll_to': {
       if (!step.locator) throw new Error(`Step ${step.id} requires a locator`);
       const locator = resolveLocator(page, step.locator);
+      if (narration) {
+        await beginNarration(narration);
+      }
       await scrollForRecording(page, locator, isVideo, scrollDurationMs, step);
       if (step.highlight) {
-        await markClickTarget(page, locator);
-        if (isVideo) await pauseForVideo(page, 350);
-      }
-      if (showCaption && deferCaptionForHighlight && videoClock) {
-        await showVideoStepCaption(page, stepNumber, step, videoClock, recorded);
+        await markClickTarget(page, locator, highlightColor, highlightOpacity);
+        if (isVideo) await highlightBeat(page);
       }
       if (isVideo) {
-        await pauseForVideo(page, 500);
+        await holdAfterStep(page);
       }
       break;
     }
@@ -243,14 +268,14 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       await locator.waitFor({ state: 'visible', timeout: 15_000 });
       if (isVideo) await ensureFormInView(page);
       if (step.highlight) {
-        await markClickTarget(page, locator);
-        if (isVideo) await pauseForVideo(page, 350);
+        await markClickTarget(page, locator, highlightColor, highlightOpacity);
+        if (isVideo) await highlightBeat(page);
       }
-      if (showCaption && deferCaptionForHighlight && videoClock) {
-        await showVideoStepCaption(page, stepNumber, step, videoClock, recorded);
+      if (narration) {
+        await beginNarration(narration);
       }
       if (isVideo) {
-        await pauseForVideo(page, POST_STEP_HOLD_MS);
+        await holdAfterStep(page);
       }
       break;
     }
@@ -267,18 +292,19 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         await ensureFormInView(page);
       }
       if (step.highlight) {
-        await markClickTarget(page, locator);
-        if (isVideo) await pauseForVideo(page, 350);
+        await markClickTarget(page, locator, highlightColor, highlightOpacity);
+        if (isVideo) await highlightBeat(page);
       }
-      if (showCaption && deferCaptionForHighlight && videoClock) {
-        await showVideoStepCaption(page, stepNumber, step, videoClock, recorded);
+      if (narration) {
+        await beginNarration(narration);
       }
       if (isVideo && step.highlight) {
-        await emphasizeClickTarget(page, locator);
+        await emphasizeClickTarget(page, locator, highlightColor, highlightOpacity);
       }
       await locator.evaluate((el) => {
         (el as HTMLElement).focus({ preventScroll: true });
       });
+      await clearHighlights(page);
       await locator.fill('');
       const typeDelay = step.type_delay_ms ?? (isVideo ? 65 : 0);
       if (isVideo && typeDelay > 0) {
@@ -287,9 +313,10 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         await locator.fill(step.value);
       }
       if (isVideo) {
-        await page.waitForTimeout(250);
+        await page.waitForTimeout(200);
         await ensureFormInView(page);
-        await pauseForVideo(page, step.wait_after_ms ?? 800);
+        await pauseForVideo(page, step.wait_after_ms ?? 600);
+        await holdAfterStep(page);
       }
       recorded.url = page.url();
       break;
@@ -304,9 +331,8 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
   }
   recorded.url = page.url();
 
-  if (showCaption && videoClock) {
-    recorded.video_end_ms = Date.now() - videoClock.startedAt;
-    await hideStepCaption(page);
+  if (narration) {
+    await endNarration(narration);
   }
 
   return recorded;
@@ -322,6 +348,7 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
 
   const showActions = flow.video?.show_actions ?? false;
   const highlightColor = flow.video?.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR;
+  const highlightOpacity = flow.video?.highlight_opacity ?? DEFAULT_HIGHLIGHT_OPACITY;
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: VIEWPORT,
@@ -372,6 +399,8 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
         stepNumber: visibleStepNumber || recordedSteps.length + 1,
         videoClock,
         scrollDurationMs,
+        highlightColor,
+        highlightOpacity,
       });
       recordedSteps.push(recorded);
     }
@@ -395,6 +424,7 @@ async function runScreenshotPass(
   });
   const page = await context.newPage();
   const highlightColor = flow.video?.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR;
+  const highlightOpacity = flow.video?.highlight_opacity ?? DEFAULT_HIGHLIGHT_OPACITY;
   await injectHighlightStyles(page, highlightColor);
 
   const firstGoto = flow.steps.find((step) => step.action === 'goto' && step.url);
@@ -415,6 +445,8 @@ async function runScreenshotPass(
         outputDir,
         stepNumber: 0,
         scrollDurationMs: VIDEO_SCROLL_DURATION_MS,
+        highlightColor,
+        highlightOpacity,
       });
       screenshots.set(step.id, recorded.screenshot);
     }
