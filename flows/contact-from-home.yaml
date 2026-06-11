@@ -14,6 +14,8 @@ video:
   voice: en-GB-SoniaNeural
   voice_rate: "-4%"
   voice_pitch: "+0Hz"
+  pronunciations:
+    GRIMME: Grimmer
   voiceover: true
   highlight_color: "#F5C518"
   highlight_opacity: 0.42
@@ -63,6 +65,7 @@ steps:
     scroll_after:
       css: '[data-sentry-component="ContactFormContent"]'
     scroll_block: start
+    scroll_duration_ms: 2000
     wait_after_ms: 600
     screenshot: viewport
 

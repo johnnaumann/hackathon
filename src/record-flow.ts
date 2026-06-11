@@ -4,7 +4,7 @@ import { chromium, type Page } from '@playwright/test';
 import { parse as parseYaml } from 'yaml';
 import { enableBrowserChrome, updateBrowserChromeUrl } from './browser-chrome.js';
 import { pauseForVideo } from './caption.js';
-import { VIDEO_SCROLL_DURATION_MS, VIEWPORT } from './constants.js';
+import { INTRO_NARRATION_HOLD_MS, VIDEO_SCROLL_DURATION_MS, VIEWPORT } from './constants.js';
 import {
   clearHighlights,
   DEFAULT_HIGHLIGHT_COLOR,
@@ -33,6 +33,7 @@ import {
 } from './overlays.js';
 import {
   measureScrollDistance,
+  resetScrollToTop,
   scrollDurationForDistance,
   smoothScrollToLocator,
 } from './smooth-scroll.js';
@@ -71,6 +72,7 @@ async function scrollForRecording(
   const block = step?.scroll_block ?? 'center';
   const distance = await measureScrollDistance(page, locator, block);
   const durationMs = scrollDurationForDistance(distance, baseMs);
+  if (durationMs < 1) return;
   await smoothScrollToLocator(page, locator, durationMs, block);
 }
 
@@ -162,7 +164,7 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
           await highlightBeat(page);
         }
         await showStepLabel(narration);
-        await holdAfterAction(page);
+        await pauseForVideo(page, INTRO_NARRATION_HOLD_MS);
         await finishStep(narration, page);
       }
       break;
@@ -187,11 +189,7 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       const locator = resolveLocator(page, step.locator);
       const deferNarration = Boolean(step.scroll_after);
 
-      if (step.scroll_before === false && isVideo) {
-        await ensureFormInView(page);
-      } else {
-        await clearCmpOverlay(page);
-      }
+      await clearCmpOverlay(page);
       if (step.scroll_before !== false) {
         await scrollForRecording(page, locator, isVideo, scrollDurationMs, step);
       } else if (!isVideo) {
@@ -233,13 +231,26 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         const scrollLocator = resolveLocator(page, step.scroll_after);
         await scrollLocator.waitFor({ state: 'visible', timeout: 15_000 });
         if (isVideo) {
+          await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+          await waitForPageReady(page);
           await pauseForVideo(page, 200);
+          await resetScrollToTop(page);
         }
         if (narration && deferNarration) {
           await showStepLabel(narration);
           markActionMoment(narration);
         }
-        await scrollForRecording(page, scrollLocator, isVideo, scrollDurationMs, step);
+        if (isVideo) {
+          const baseMs = step.scroll_duration_ms ?? scrollDurationMs;
+          const block = step.scroll_block ?? 'start';
+          const distance = await measureScrollDistance(page, scrollLocator, block);
+          const scrollMs = scrollDurationForDistance(distance, baseMs);
+          if (scrollMs >= 1) {
+            await smoothScrollToLocator(page, scrollLocator, scrollMs, block);
+          }
+        } else {
+          await scrollLocator.scrollIntoViewIfNeeded();
+        }
       }
 
       if (isVideo && step.wait_after_ms) {

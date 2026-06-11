@@ -58,6 +58,8 @@ export type FlowDefinition = {
     voice_rate?: string;
     /** Speech pitch, e.g. "+0Hz" (default: +0Hz) */
     voice_pitch?: string;
+    /** TTS-only word replacements — on-screen captions are unchanged */
+    pronunciations?: Record<string, string>;
     /** Generate AI voiceover from captions.srt after recording */
     voiceover?: boolean;
     /**

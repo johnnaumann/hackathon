@@ -20,6 +20,26 @@ export type VoiceProsody = {
   pitch?: string;
 };
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Apply TTS-only substitutions (captions and guides keep the original spelling). */
+export function applyPronunciations(
+  text: string,
+  pronunciations: Record<string, string> = {},
+): string {
+  let result = text;
+  const entries = Object.entries(pronunciations).sort(([a], [b]) => b.length - a.length);
+
+  for (const [from, to] of entries) {
+    const pattern = new RegExp(`\\b${escapeRegExp(from)}\\b(?!\\.)`, 'gi');
+    result = result.replace(pattern, to);
+  }
+
+  return result;
+}
+
 export async function listEnglishFemaleVoices(): Promise<string[]> {
   const { VoicesManager } = await import('edge-tts-universal');
   const manager = await VoicesManager.create();
@@ -97,8 +117,7 @@ function maxNarrationSeconds(
     cueIndex + 1 < cues.length ? cues[cueIndex + 1].startMs : videoDurationSec * 1000;
 
   const availableMs = nextVoiceStartMs - voiceStartMs - CUE_GAP_MS;
-  const slotMs = cue.endMs - cue.startMs;
-  return Math.max(0.5, Math.min(availableMs, slotMs) / 1000);
+  return Math.max(0.5, availableMs / 1000);
 }
 
 export async function buildVoiceoverTrack(
@@ -107,6 +126,7 @@ export async function buildVoiceoverTrack(
   workDir: string,
   videoDurationSec: number,
   prosody: VoiceProsody = {},
+  pronunciations: Record<string, string> = {},
 ): Promise<string> {
   await mkdir(workDir, { recursive: true });
   const segmentPaths: string[] = [];
@@ -116,7 +136,7 @@ export async function buildVoiceoverTrack(
     const rawPath = path.join(workDir, `cue-${cue.index}-raw.mp3`);
     const preparedPath = path.join(workDir, `cue-${cue.index}.mp3`);
     const maxDurationSec = maxNarrationSeconds(cue, index, cues, videoDurationSec);
-    const narration = cue.title || cue.text;
+    const narration = applyPronunciations(cue.title || cue.text, pronunciations);
 
     await synthesizeSpeech(narration, voice, rawPath, prosody);
     await prepareNarrationAudio(rawPath, preparedPath, maxDurationSec);
@@ -227,6 +247,7 @@ export async function generateVoiceoverForFlow(
     rate: flow.video?.voice_rate ?? DEFAULT_VOICE_RATE,
     pitch: flow.video?.voice_pitch ?? DEFAULT_VOICE_PITCH,
   };
+  const pronunciations = flow.video?.pronunciations ?? {};
   const musicVolume = flow.video?.music_volume_with_voice
     ?? (flow.video?.music_volume ?? 0.45) * 0.22;
   const musicPath = path.resolve(flow.video?.music ?? 'assets/music/background.mp3');
@@ -237,7 +258,14 @@ export async function generateVoiceoverForFlow(
   const workDir = path.join(outputDir, 'voiceover-work');
 
   console.log(`Synthesizing voiceover (${voice}, ${prosody.rate}) for ${cues.length} cues…`);
-  const voiceoverPath = await buildVoiceoverTrack(cues, voice, workDir, videoDurationSec, prosody);
+  const voiceoverPath = await buildVoiceoverTrack(
+    cues,
+    voice,
+    workDir,
+    videoDurationSec,
+    prosody,
+    pronunciations,
+  );
 
   await muxVideoMusicVoiceover({
     silentVideoPath,

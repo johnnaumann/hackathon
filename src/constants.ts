@@ -11,6 +11,8 @@ export const ACTION_BEAT_MS = 180;
 export const POST_ACTION_HOLD_MS = 450;
 /** Final pause before the next step. */
 export const POST_STEP_HOLD_MS = 400;
+/** Hold on the first/intro step so the opening narration is not clipped. */
+export const INTRO_NARRATION_HOLD_MS = 2_800;
 
 /** Base duration for eased scroll animations during video recording. */
 export const VIDEO_SCROLL_DURATION_MS = 3_000;
