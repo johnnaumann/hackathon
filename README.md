@@ -14,7 +14,8 @@ This runs the `contact-from-home` flow and writes everything under `output/conta
 
 - `guide.md` — user-facing markdown guide
 - `assets/*.png` — guide screenshots with red highlights
-- `flow.webm` — 16:9 viewport recording with browser chrome + step caption cards
+- `flow.webm` — viewport recording **with background music**
+- `flow.mp4` — same video with background music (better compatibility in some players)
 - `captions.srt` — step timing file (voiceover seed, not burned into video)
 - `flow-result.json` — machine-readable recording metadata
 - `video-raw/` — raw Playwright video chunks (intermediate)

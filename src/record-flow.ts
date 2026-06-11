@@ -15,6 +15,7 @@ import {
 } from './smooth-scroll.js';
 import type { FlowDefinition, FlowResult, FlowStep, RecordedStep } from './types.js';
 import { finalizeVideo } from './video.js';
+import { generateVoiceoverForFlow } from './voiceover.js';
 
 const FLOWS_DIR = path.resolve('flows');
 const DEFAULT_FLOW = 'contact-from-home.yaml';
@@ -159,9 +160,11 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
         await pauseForVideo(page, 400);
       }
       if (!isVideo) {
+        await dismissCookieBanner(page);
         recorded.screenshot = await captureStepScreenshot(page, outputDir, step);
+      } else {
+        await dismissCookieBanner(page);
       }
-      await dismissCookieBanner(page);
       await locator.click({ force: step.click_force ?? false });
       await page.waitForLoadState('domcontentloaded');
       if (step.wait_for_url) {
@@ -205,6 +208,37 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       if (isVideo) {
         await pauseForVideo(page, POST_STEP_HOLD_MS);
       }
+      break;
+    }
+
+    case 'fill': {
+      if (!step.locator) throw new Error(`Step ${step.id} requires a locator`);
+      if (step.value === undefined) throw new Error(`Step ${step.id} requires a value`);
+      const locator = resolveLocator(page, step.locator);
+      if (step.highlight) {
+        await highlightLocator(locator);
+      }
+      if (step.scroll_before !== false) {
+        await scrollForRecording(page, locator, isVideo, scrollDurationMs, step);
+      } else if (!isVideo) {
+        await locator.scrollIntoViewIfNeeded();
+      }
+      if (isVideo) {
+        await pauseForVideo(page, 400);
+      }
+      await dismissCookieBanner(page);
+      await locator.click({ force: step.click_force ?? true });
+      await locator.fill('');
+      const typeDelay = step.type_delay_ms ?? (isVideo ? 65 : 0);
+      if (isVideo && typeDelay > 0) {
+        await locator.pressSequentially(step.value, { delay: typeDelay });
+      } else {
+        await locator.fill(step.value);
+      }
+      if (isVideo) {
+        await pauseForVideo(page, step.wait_after_ms ?? 800);
+      }
+      recorded.url = page.url();
       break;
     }
 
@@ -299,6 +333,15 @@ async function runScreenshotPass(
   const page = await context.newPage();
   await injectHighlightStyles(page);
 
+  const firstGoto = flow.steps.find((step) => step.action === 'goto' && step.url);
+  if (firstGoto?.url) {
+    await page.goto(firstGoto.url, { waitUntil: 'domcontentloaded' });
+    await dismissCookieBanner(page);
+    await waitForPageReady(page);
+    await scrollToTop(page);
+    await page.waitForTimeout(400);
+  }
+
   const screenshots = new Map<string, string | undefined>();
 
   try {
@@ -326,26 +369,31 @@ export async function recordFlow(flowFile = DEFAULT_FLOW): Promise<FlowResult> {
   await mkdir(path.join(outputDir, 'assets'), { recursive: true });
 
   const { steps: videoSteps, rawVideoPath, trimStartMs } = await runVideoPass(flow, outputDir);
-  const screenshots = await runScreenshotPass(flow, outputDir);
-
-  const steps = videoSteps.map((step) => ({
-    ...step,
-    screenshot: screenshots.get(step.id),
-  }));
 
   const result: FlowResult = {
     flow,
     recorded_at: new Date().toISOString(),
-    steps,
+    steps: videoSteps,
   };
 
   if (rawVideoPath) {
     await finalizeVideo(result, rawVideoPath, trimStartMs);
-    result.video = {
-      webm: 'flow.webm',
-      captions: 'captions.srt',
-    };
+    if (flow.video?.voiceover) {
+      await generateVoiceoverForFlow(flow, outputDir);
+    }
   }
+
+  let screenshots = new Map<string, string | undefined>();
+  try {
+    screenshots = await runScreenshotPass(flow, outputDir);
+  } catch (error) {
+    console.warn('Screenshot pass failed — video output is still available:', error);
+  }
+
+  result.steps = videoSteps.map((step) => ({
+    ...step,
+    screenshot: screenshots.get(step.id),
+  }));
 
   await writeFile(
     path.join(outputDir, 'flow-result.json'),
@@ -353,7 +401,7 @@ export async function recordFlow(flowFile = DEFAULT_FLOW): Promise<FlowResult> {
     'utf8',
   );
 
-  console.log(`\nRecorded ${steps.length} steps → ${outputDir}`);
+  console.log(`\nRecorded ${result.steps.length} steps → ${outputDir}`);
   return result;
 }
 

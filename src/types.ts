@@ -5,9 +5,13 @@ export type LocatorSpec =
 
 export type FlowStep = {
   id: string;
-  action: 'goto' | 'click' | 'click_optional' | 'scroll_to' | 'assert_visible';
+  action: 'goto' | 'click' | 'click_optional' | 'scroll_to' | 'assert_visible' | 'fill';
   url?: string;
   locator?: LocatorSpec;
+  /** Text to type for fill steps */
+  value?: string;
+  /** Per-keystroke delay during video recording (ms) — makes typing visible */
+  type_delay_ms?: number;
   /** Wait for this element after navigation before showing the step caption */
   wait_for?: LocatorSpec;
   title: string;
@@ -38,6 +42,16 @@ export type FlowDefinition = {
   video?: {
     /** Default eased scroll duration during video recording (ms) */
     scroll_duration_ms?: number;
+    /** Path to background music track (relative to repo root) */
+    music?: string;
+    /** Background music volume 0–1 (default 0.45) */
+    music_volume?: number;
+    /** Background music volume when voiceover is mixed (default: music_volume × 0.4) */
+    music_volume_with_voice?: number;
+    /** Edge TTS voice name (default: en-GB-SoniaNeural) */
+    voice?: string;
+    /** Generate AI voiceover from captions.srt after recording */
+    voiceover?: boolean;
   };
 };
 
@@ -57,6 +71,7 @@ export type FlowResult = {
   steps: RecordedStep[];
   video?: {
     webm: string;
+    mp4?: string;
     captions: string;
   };
 };

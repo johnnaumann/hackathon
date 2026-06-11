@@ -1,13 +1,18 @@
 name: contact-from-home
-title: How to reach the GRIMME contact form from the home page
+title: How to contact GRIMME from the home page
 description: >
-  Walkthrough for finding the contact form on grimme.com using the navigation
-  menu from the English home page.
+  Walkthrough for finding the contact form on grimme.com, filling in your
+  details, and submitting an enquiry.
 site: https://grimme.com/en
 output_dir: output/contact-from-home
 
 video:
   scroll_duration_ms: 3500
+  music: assets/music/background.mp3
+  music_volume: 0.45
+  music_volume_with_voice: 0.08
+  voice: en-GB-SoniaNeural
+  voiceover: true
 
 steps:
   - id: home
@@ -72,6 +77,48 @@ steps:
     title: Confirm the contact form is visible
     description: >
       You should now see the enquiry form fields including your email address
-      and message, ready to submit.
+      and message, ready to fill in.
     highlight: true
+    screenshot: viewport
+
+  - id: fill-email
+    action: fill
+    locator:
+      css: 'input[id="E-mail address"]'
+    value: demo@example.com
+    title: Enter your email address
+    description: >
+      Click the **E-mail address** field and type your email address.
+    highlight: true
+    scroll_before: false
+    type_delay_ms: 70
+    wait_after_ms: 700
+    screenshot: viewport
+
+  - id: fill-message
+    action: fill
+    locator:
+      css: 'input[id="Your message"]'
+    value: I would like more information about your products.
+    title: Enter your message
+    description: >
+      Click the **Your message** field and type your enquiry.
+    highlight: true
+    scroll_before: false
+    type_delay_ms: 55
+    wait_after_ms: 700
+    screenshot: viewport
+
+  - id: submit-form
+    action: click
+    locator:
+      role: button
+      name: Send inquiry
+    title: Submit the enquiry form
+    description: >
+      Click **Send inquiry** to submit your contact request.
+    highlight: true
+    scroll_before: false
+    click_force: true
+    wait_after_ms: 1500
     screenshot: viewport
