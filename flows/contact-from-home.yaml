@@ -6,6 +6,9 @@ description: >
 site: https://grimme.com/en
 output_dir: output/contact-from-home
 
+video:
+  scroll_duration_ms: 3500
+
 steps:
   - id: home
     action: goto

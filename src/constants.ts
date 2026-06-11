@@ -3,3 +3,6 @@ export const VIEWPORT = { width: 1920, height: 1080 } as const;
 
 export const CAPTION_HOLD_MS = 2_500;
 export const POST_STEP_HOLD_MS = 1_000;
+
+/** Base duration for eased scroll animations during video recording. */
+export const VIDEO_SCROLL_DURATION_MS = 3_000;

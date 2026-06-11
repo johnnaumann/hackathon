@@ -4,10 +4,15 @@ import { chromium, type Page } from '@playwright/test';
 import { parse as parseYaml } from 'yaml';
 import { enableBrowserChrome, updateBrowserChromeUrl } from './browser-chrome.js';
 import { hideStepCaption, pauseForVideo, showStepCaption } from './caption.js';
-import { CAPTION_HOLD_MS, POST_STEP_HOLD_MS, VIEWPORT } from './constants.js';
+import { CAPTION_HOLD_MS, POST_STEP_HOLD_MS, VIDEO_SCROLL_DURATION_MS, VIEWPORT } from './constants.js';
 import { clearHighlights, highlightLocator, injectHighlightStyles } from './highlight.js';
 import { resolveLocator } from './locators.js';
 import { dismissCookieBanner } from './overlays.js';
+import {
+  measureScrollDistance,
+  scrollDurationForDistance,
+  smoothScrollToLocator,
+} from './smooth-scroll.js';
 import type { FlowDefinition, FlowResult, FlowStep, RecordedStep } from './types.js';
 import { finalizeVideo } from './video.js';
 
@@ -21,7 +26,26 @@ type RunStepOptions = {
   outputDir: string;
   stepNumber: number;
   videoClock?: { startedAt: number };
+  scrollDurationMs: number;
 };
+
+async function scrollForRecording(
+  page: Page,
+  locator: import('@playwright/test').Locator,
+  isVideo: boolean,
+  scrollDurationMs: number,
+  step?: FlowStep,
+) {
+  if (!isVideo) {
+    await locator.scrollIntoViewIfNeeded();
+    return;
+  }
+
+  const baseMs = step?.scroll_duration_ms ?? scrollDurationMs;
+  const distance = await measureScrollDistance(page, locator);
+  const durationMs = scrollDurationForDistance(distance, baseMs);
+  await smoothScrollToLocator(page, locator, durationMs);
+}
 
 async function loadFlow(flowFile = DEFAULT_FLOW): Promise<FlowDefinition> {
   const filePath = path.join(FLOWS_DIR, flowFile);
@@ -55,7 +79,7 @@ async function captureStepScreenshot(
 }
 
 async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Promise<RecordedStep> {
-  const { mode, outputDir, stepNumber, videoClock } = options;
+  const { mode, outputDir, stepNumber, videoClock, scrollDurationMs } = options;
   const isVideo = mode === 'video';
 
   await clearHighlights(page);
@@ -104,13 +128,14 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       if (step.highlight) {
         await highlightLocator(locator);
       }
-      await locator.scrollIntoViewIfNeeded();
+      await scrollForRecording(page, locator, isVideo, scrollDurationMs, step);
       if (isVideo) {
-        await pauseForVideo(page, 300);
+        await pauseForVideo(page, 400);
       }
       if (!isVideo) {
         recorded.screenshot = await captureStepScreenshot(page, outputDir, step);
       }
+      await dismissCookieBanner(page);
       await locator.click();
       await page.waitForLoadState('domcontentloaded');
       if (isVideo) {
@@ -128,14 +153,12 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
     case 'scroll_to': {
       if (!step.locator) throw new Error(`Step ${step.id} requires a locator`);
       const locator = resolveLocator(page, step.locator);
-      await locator.evaluate((element) => {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
-      if (isVideo) {
-        await pauseForVideo(page, 1_000);
-      }
+      await scrollForRecording(page, locator, isVideo, scrollDurationMs, step);
       if (step.highlight) {
         await highlightLocator(locator);
+      }
+      if (isVideo) {
+        await pauseForVideo(page, 500);
       }
       break;
     }
@@ -192,6 +215,7 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
   await dismissCookieBanner(page);
 
   const videoClock = { startedAt: Date.now() };
+  const scrollDurationMs = flow.video?.scroll_duration_ms ?? VIDEO_SCROLL_DURATION_MS;
   const recordedSteps: RecordedStep[] = [];
   let rawVideoPath: string | undefined;
 
@@ -207,6 +231,7 @@ async function runVideoPass(flow: FlowDefinition, outputDir: string): Promise<{
         outputDir,
         stepNumber: visibleStepNumber || recordedSteps.length + 1,
         videoClock,
+        scrollDurationMs,
       });
       recordedSteps.push(recorded);
     }
@@ -241,6 +266,7 @@ async function runScreenshotPass(
         mode: 'screenshots',
         outputDir,
         stepNumber: 0,
+        scrollDurationMs: VIDEO_SCROLL_DURATION_MS,
       });
       screenshots.set(step.id, recorded.screenshot);
     }

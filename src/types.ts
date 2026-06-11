@@ -14,6 +14,8 @@ export type FlowStep = {
   screenshot?: 'fullPage' | 'viewport' | 'none';
   /** Show an on-screen caption card in the recorded video (default: true unless screenshot is none) */
   video_caption?: boolean;
+  /** Override eased scroll duration for this step during video recording (ms) */
+  scroll_duration_ms?: number;
 };
 
 export type FlowDefinition = {
@@ -23,6 +25,10 @@ export type FlowDefinition = {
   site: string;
   output_dir: string;
   steps: FlowStep[];
+  video?: {
+    /** Default eased scroll duration during video recording (ms) */
+    scroll_duration_ms?: number;
+  };
 };
 
 export type RecordedStep = {

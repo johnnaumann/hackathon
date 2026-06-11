@@ -85,6 +85,15 @@ Recording uses two passes so video and guide assets don't interfere:
 
 To skip a step in the video (e.g. cookie accept), set `screenshot: none` or `video_caption: false` in the YAML.
 
+Scroll speed during video recording uses a custom eased animation (not native `scrollIntoView`). Tune globally in your flow YAML:
+
+```yaml
+video:
+  scroll_duration_ms: 3500   # base duration; scales up for long scroll distances
+```
+
+Or per step: `scroll_duration_ms: 5000` on any `scroll_to` or `click` step.
+
 ### Higher-polish video options (future)
 
 | Tool | What it adds beyond this POC |
