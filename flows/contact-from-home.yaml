@@ -96,6 +96,48 @@ steps:
     wait_after_ms: 700
     screenshot: viewport
 
+  - id: fill-first-name
+    action: fill
+    locator:
+      css: 'input[id="First name"]'
+    value: Alex
+    title: Enter your first name
+    description: >
+      After your email, additional fields appear. Type your **first name**.
+    highlight: true
+    scroll_before: false
+    type_delay_ms: 65
+    wait_after_ms: 600
+    screenshot: viewport
+
+  - id: fill-surname
+    action: fill
+    locator:
+      css: 'input[id="Surname"]'
+    value: Demo
+    title: Enter your surname
+    description: >
+      Type your **surname** in the contact details section.
+    highlight: true
+    scroll_before: false
+    type_delay_ms: 65
+    wait_after_ms: 600
+    screenshot: viewport
+
+  - id: fill-postal-code
+    action: fill
+    locator:
+      css: 'input[id="Postal code"]'
+    value: '49504'
+    title: Enter your postal code
+    description: >
+      Type your **postal code**. Country defaults to Germany.
+    highlight: true
+    scroll_before: false
+    type_delay_ms: 60
+    wait_after_ms: 600
+    screenshot: viewport
+
   - id: fill-message
     action: fill
     locator:

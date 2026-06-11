@@ -55,17 +55,28 @@ export async function waitAndDismissCookieBanner(page: Page): Promise<void> {
 }
 
 /**
- * Fast no-op when CMP is already gone. Removes a leftover overlay without
- * clicking accept (which causes the ~3500px scroll jump).
+ * Removes a leftover CMP node from the DOM. Never scrolls the page — scrolling
+ * to top here was causing the form section to bounce out of view on every step.
  */
 export async function clearCmpOverlay(page: Page): Promise<void> {
-  if (!(await isCmpInDom(page))) {
-    const scrollY = await page.evaluate(() => window.scrollY);
-    if (scrollY > 5) await ensureAtTop(page);
-    return;
+  if (await isCmpInDom(page)) {
+    await removeCookieBannerFromDom(page);
   }
-  await removeCookieBannerFromDom(page);
-  await ensureAtTop(page);
+}
+
+/** Keep the contact form block in a stable viewport position during fill steps. */
+export async function ensureFormInView(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const form = document.querySelector('[data-sentry-source-file="contact-form-content.tsx"]');
+    if (!form) return;
+    const rect = form.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const margin = 100;
+    if (rect.top >= margin && rect.bottom <= viewportHeight - margin) return;
+
+    const targetTop = viewportHeight * 0.12;
+    window.scrollBy({ top: rect.top - targetTop, behavior: 'instant' as ScrollBehavior });
+  });
 }
 
 export async function waitForPageReady(page: Page) {
