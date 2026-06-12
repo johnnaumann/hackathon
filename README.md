@@ -14,11 +14,12 @@ This runs the `contact-from-home` flow and writes everything under `output/conta
 
 - `guide.md` — user-facing markdown guide
 - `assets/*.png` — guide screenshots with red highlights
-- `flow.webm` — viewport recording **with background music**
-- `flow.mp4` — same video with background music (better compatibility in some players)
-- `captions.srt` — step timing file (voiceover seed, not burned into video)
+- `flow.webm` — polished recording **with music + voiceover** (intro card, animated cursor)
+- `flow.mp4` — same video (better compatibility in some players, web-streamable)
+- `captions.srt` — step timing file (drives the voiceover, not burned into video)
+- `flow-silent.mp4` — silent master (cards + trim baked in; audio remux input)
 - `flow-result.json` — machine-readable recording metadata
-- `video-raw/` — raw Playwright video chunks (intermediate)
+- `video-raw/` — raw Playwright video + rendered card PNGs (intermediate)
 - `debug/` — probe/dev screenshots (not published)
 
 ## How it works
@@ -78,15 +79,33 @@ Also supports `text:` and `css:` keys. See `src/locators.ts`.
 
 Recording uses two passes so video and guide assets don't interfere:
 
-1. **Video pass** — 1920×1080 (16:9) viewport with a browser chrome bar, step caption cards, and no full-page screenshot scrolling.
+1. **Video pass** — 1920×1080 (16:9) viewport with an animated cursor, step caption cards, and no full-page screenshot scrolling.
 2. **Screenshot pass** — separate run for guide PNGs (including full-page where configured).
 
 | Output | Description |
 |--------|-------------|
-| `flow.webm` | 16:9 viewport recording with browser chrome + on-screen step cards |
-| `captions.srt` | Step timings + copy for a future voiceover track (not burned into video) |
+| `flow.webm` / `flow.mp4` | 16:9 recording with animated cursor + click ripple, highlight rings, step cards ("Step N of M"), intro card, music + voiceover |
+| `captions.srt` | Step timings + copy driving the voiceover track (not burned into video) |
 
 To skip a step in the video (e.g. cookie accept), set `screenshot: none` or `video_caption: false` in the YAML.
+
+### Intro and end cards
+
+The video opens on a branded title card (flow title + description, narrated when
+voiceover is on). An optional closing card is off by default:
+
+```yaml
+video:
+  intro_card: true            # default; or { duration_ms, title, subtitle }
+  # end_card:                 # optional closing card
+  #   image: assets/logo.png  # optional mascot/logo PNG
+  #   heading: Thanks for watching
+  #   text: grimme.com        # defaults to the site host
+```
+
+Set `intro_card: false` to start straight on the page. Cards are rendered in the
+browser (real fonts), encoded with fades, and concatenated with the recording —
+caption/voiceover timings shift automatically.
 
 Scroll speed during video recording uses a custom eased animation (not native `scrollIntoView`). Tune globally in your flow YAML:
 

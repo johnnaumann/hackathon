@@ -204,8 +204,8 @@ export async function muxVideoMusicVoiceover(options: {
   ].join(';');
 
   for (const [outputPath, videoCodec, audioCodec, extraVideoArgs] of [
-    [webmOutput, 'libvpx-vp9', 'libopus', ['-b:v', '2M']] as const,
-    [mp4Output, 'libx264', 'aac', ['-preset', 'fast', '-crf', '23']] as const,
+    [webmOutput, 'libvpx-vp9', 'libopus', ['-b:v', '2M', '-cpu-used', '4', '-row-mt', '1', '-pix_fmt', 'yuv420p']] as const,
+    [mp4Output, 'libx264', 'aac', ['-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart']] as const,
   ]) {
     await execFileAsync('ffmpeg', [
       '-y',
@@ -241,7 +241,7 @@ export async function generateVoiceoverForFlow(
   outputDir: string,
 ): Promise<{ voiceoverPath: string; voice: string }> {
   const srtPath = path.join(outputDir, 'captions.srt');
-  const silentVideoPath = path.join(outputDir, 'flow-silent.webm');
+  const silentVideoPath = path.join(outputDir, 'flow-silent.mp4');
   const voice = flow.video?.voice ?? DEFAULT_VOICE;
   const prosody: VoiceProsody = {
     rate: flow.video?.voice_rate ?? DEFAULT_VOICE_RATE,

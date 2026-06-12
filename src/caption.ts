@@ -11,6 +11,7 @@ export async function showStepCaption(
   stepNumber: number,
   title: string,
   description: string,
+  totalSteps?: number,
 ) {
   const body = stripMarkdown(description)
     .split('\n')
@@ -19,8 +20,21 @@ export async function showStepCaption(
     .join(' ');
 
   await page.evaluate(
-    ({ rootId, stepNumber, title, body }) => {
+    ({ rootId, stepNumber, totalSteps, title, body }) => {
       document.getElementById(rootId)?.remove();
+
+      const styleId = `${rootId}-style`;
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+          @keyframes flow-doc-caption-in {
+            0% { opacity: 0; transform: translateY(14px); }
+            100% { opacity: 1; transform: translateY(0); }
+          }
+        `;
+        document.head.append(style);
+      }
 
       const root = document.createElement('div');
       root.id = rootId;
@@ -43,10 +57,11 @@ export async function showStepCaption(
         'padding: 16px 20px',
         'box-shadow: 0 12px 40px rgba(0,0,0,0.35)',
         'max-width: 720px',
+        'animation: flow-doc-caption-in 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both',
       ].join(';');
 
       const label = document.createElement('div');
-      label.textContent = `Step ${stepNumber}`;
+      label.textContent = totalSteps ? `Step ${stepNumber} of ${totalSteps}` : `Step ${stepNumber}`;
       label.style.cssText = [
         'font-size: 12px',
         'font-weight: 700',
@@ -68,7 +83,7 @@ export async function showStepCaption(
       root.append(card);
       document.body.append(root);
     },
-    { rootId: CAPTION_ROOT_ID, stepNumber, title, body },
+    { rootId: CAPTION_ROOT_ID, stepNumber, totalSteps, title, body },
   );
 }
 

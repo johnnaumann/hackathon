@@ -18,7 +18,8 @@ video:
     GRIMME: Grimmer
   voiceover: true
   highlight_color: "#F5C518"
-  highlight_opacity: 0.42
+  highlight_opacity: 0.16
+  intro_card: true
 
 steps:
   - id: home
@@ -150,5 +151,7 @@ steps:
     highlight: true
     scroll_before: false
     click_force: true
-    wait_after_ms: 1500
+    wait_for:
+      text: We have received your request
+    wait_after_ms: 1600
     screenshot: viewport

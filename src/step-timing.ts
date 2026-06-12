@@ -12,6 +12,7 @@ import type { FlowStep, RecordedStep } from './types.js';
 export type NarrationContext = {
   page: Page;
   stepNumber: number;
+  totalSteps: number;
   step: FlowStep;
   videoClock: { startedAt: number };
   recorded: RecordedStep;
@@ -24,7 +25,7 @@ function nowMs(ctx: NarrationContext): number {
 /** Show the on-screen label and open the voiceover slot. */
 export async function showStepLabel(ctx: NarrationContext) {
   ctx.recorded.video_start_ms = nowMs(ctx);
-  await showStepCaption(ctx.page, ctx.stepNumber, ctx.step.title, ctx.step.description);
+  await showStepCaption(ctx.page, ctx.stepNumber, ctx.step.title, ctx.step.description, ctx.totalSteps);
 }
 
 /** Let the viewer read/hear the title before the action. */

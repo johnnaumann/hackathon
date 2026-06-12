@@ -12,7 +12,7 @@ export type FlowStep = {
   value?: string;
   /** Per-keystroke delay during video recording (ms) — makes typing visible */
   type_delay_ms?: number;
-  /** Wait for this element after navigation before showing the step caption */
+  /** Wait for this element after the navigation/click before continuing */
   wait_for?: LocatorSpec;
   title: string;
   description: string;
@@ -73,8 +73,26 @@ export type FlowDefinition = {
     };
     /** Element outline and click-pulse colour (default: #F5C518 yellow) */
     highlight_color?: string;
-    /** Highlight fill opacity 0–1 (default: 0.42) */
+    /** Highlight fill opacity 0–1 (default: 0.16 — the ring carries the emphasis) */
     highlight_opacity?: number;
+    /**
+     * Branded title card before the recording (default: on). Title/subtitle
+     * default to the flow title/description; narrated when voiceover is enabled.
+     */
+    intro_card?: boolean | {
+      duration_ms?: number;
+      title?: string;
+      subtitle?: string;
+    };
+    /** Closing card after the recording (off unless configured). */
+    end_card?: boolean | {
+      duration_ms?: number;
+      /** Full-frame or transparent PNG shown above the text (e.g. a mascot) */
+      image?: string;
+      heading?: string;
+      /** Defaults to the site host */
+      text?: string;
+    };
   };
 };
 
