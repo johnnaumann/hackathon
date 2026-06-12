@@ -2,9 +2,12 @@ import type { Locator, Page } from '@playwright/test';
 
 export type ScrollBlock = 'center' | 'start' | 'end';
 
-function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-}
+/**
+ * Viewport-top offset for `block: start` as a fraction of viewport height.
+ * Must match ensureFormInView's anchor — a mismatch means the next fill step
+ * "corrects" the position with a visible jump right after the smooth scroll.
+ */
+export const SCROLL_START_ANCHOR = 0.12;
 
 /** Jump to the top so a post-navigation scroll is one continuous motion (not hash + animate). */
 export async function resetScrollToTop(page: Page) {
@@ -16,32 +19,64 @@ export async function resetScrollToTop(page: Page) {
   await page.waitForTimeout(80);
 }
 
+/**
+ * Pin the viewport to the top across an in-app navigation. SPA route changes
+ * with a hash (e.g. /service#contact) natively jump straight to the anchor,
+ * which records as an abrupt cut — the lock snaps any such scroll back to 0
+ * until released, so the eased scroll afterwards is the only motion on screen.
+ */
+export async function lockScrollToTop(page: Page) {
+  await page.evaluate(() => {
+    const w = window as Window & { __flowScrollLock?: () => void };
+    if (w.__flowScrollLock) return;
+    const handler = () => {
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+    w.__flowScrollLock = handler;
+    window.addEventListener('scroll', handler);
+    window.scrollTo(0, 0);
+  });
+}
+
+export async function releaseScrollLock(page: Page) {
+  await page.evaluate(() => {
+    const w = window as Window & { __flowScrollLock?: () => void };
+    if (!w.__flowScrollLock) return;
+    window.removeEventListener('scroll', w.__flowScrollLock);
+    delete w.__flowScrollLock;
+  });
+}
+
 async function resolveScrollTarget(
   locator: Locator,
   block: ScrollBlock,
 ): Promise<{ startY: number; targetY: number } | null> {
-  return locator.evaluate((element, align) => {
-    const rect = element.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const maxScroll = document.documentElement.scrollHeight - viewportHeight;
-    const startY = window.scrollY;
+  return locator.evaluate(
+    (element, { align, startAnchor }) => {
+      const rect = element.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const maxScroll = document.documentElement.scrollHeight - viewportHeight;
+      const startY = window.scrollY;
 
-    let toY: number;
-    if (align === 'center') {
-      toY = startY + rect.top - (viewportHeight - rect.height) / 2;
-    } else if (align === 'start') {
-      toY = startY + rect.top - 80;
-    } else {
-      toY = startY + rect.bottom - viewportHeight + 80;
-    }
+      let toY: number;
+      if (align === 'center') {
+        toY = startY + rect.top - (viewportHeight - rect.height) / 2;
+      } else if (align === 'start') {
+        toY = startY + rect.top - Math.round(viewportHeight * startAnchor);
+      } else {
+        toY = startY + rect.bottom - viewportHeight + 80;
+      }
 
-    return { startY, targetY: Math.max(0, Math.min(toY, maxScroll)) };
-  }, block);
+      return { startY, targetY: Math.max(0, Math.min(toY, maxScroll)) };
+    },
+    { align: block, startAnchor: SCROLL_START_ANCHOR },
+  );
 }
 
 /**
- * Animate scroll over a fixed duration for video capture.
- * Target is resolved once up front so the motion is a single uninterrupted glide.
+ * Animate scroll over a fixed duration for video capture. The animation runs
+ * entirely in-page on requestAnimationFrame — driving it from Node (one
+ * evaluate per frame) stutters with CDP round-trip jitter.
  */
 export async function smoothScrollToLocator(
   page: Page,
@@ -55,17 +90,31 @@ export async function smoothScrollToLocator(
   const distance = target.targetY - target.startY;
   if (Math.abs(distance) < 40) return;
 
-  const frameMs = 8;
-  const frames = Math.max(1, Math.ceil(durationMs / frameMs));
+  await page.evaluate(
+    async ({ targetY, durationMs }) => {
+      const startY = window.scrollY;
+      const dist = targetY - startY;
+      const easeInOutCubic = (t: number) =>
+        t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 
-  for (let frame = 1; frame <= frames; frame += 1) {
-    const y = target.startY + distance * easeInOutCubic(frame / frames);
-    await page.evaluate((scrollY) => window.scrollTo(0, scrollY), y);
-    await page.waitForTimeout(frameMs);
-  }
+      await new Promise<void>((resolve) => {
+        const start = performance.now();
+        const tick = (now: number) => {
+          const t = Math.min(1, (now - start) / durationMs);
+          window.scrollTo(0, startY + dist * easeInOutCubic(t));
+          if (t < 1) {
+            requestAnimationFrame(tick);
+          } else {
+            resolve();
+          }
+        };
+        requestAnimationFrame(tick);
+      });
+    },
+    { targetY: target.targetY, durationMs },
+  );
 
-  await page.evaluate((scrollY) => window.scrollTo(0, scrollY), target.targetY);
-  await page.waitForTimeout(50);
+  await page.waitForTimeout(60);
 }
 
 /** Scale scroll duration by distance — capped so long page scrolls stay snappy on video. */

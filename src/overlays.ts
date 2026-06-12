@@ -64,18 +64,40 @@ export async function clearCmpOverlay(page: Page): Promise<void> {
   }
 }
 
-/** Keep the contact form block in a stable viewport position during fill steps. */
+/**
+ * Keep the contact form block in a stable viewport position during fill steps.
+ * Anchored at the same offset as `block: start` smooth scrolls (12% of viewport
+ * height) so it never "corrects" a position the eased scroll just reached, and
+ * any real correction is a short eased glide rather than an instant jump.
+ */
 export async function ensureFormInView(page: Page): Promise<void> {
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const form = document.querySelector('[data-sentry-source-file="contact-form-content.tsx"]');
     if (!form) return;
     const rect = form.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
-    const margin = 100;
-    if (rect.top >= margin && rect.bottom <= viewportHeight - margin) return;
+    const targetTop = Math.round(viewportHeight * 0.12);
+    const delta = rect.top - targetTop;
+    if (Math.abs(delta) < 24) return;
 
-    const targetTop = viewportHeight * 0.12;
-    window.scrollBy({ top: rect.top - targetTop, behavior: 'instant' as ScrollBehavior });
+    const startY = window.scrollY;
+    const durationMs = 320;
+    const easeInOutCubic = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+
+    await new Promise<void>((resolve) => {
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - start) / durationMs);
+        window.scrollTo(0, startY + delta * easeInOutCubic(t));
+        if (t < 1) {
+          requestAnimationFrame(tick);
+        } else {
+          resolve();
+        }
+      };
+      requestAnimationFrame(tick);
+    });
   });
 }
 

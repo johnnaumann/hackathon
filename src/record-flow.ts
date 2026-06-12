@@ -33,8 +33,9 @@ import {
   waitForPageReady,
 } from './overlays.js';
 import {
+  lockScrollToTop,
   measureScrollDistance,
-  resetScrollToTop,
+  releaseScrollLock,
   scrollDurationForDistance,
   smoothScrollToLocator,
 } from './smooth-scroll.js';
@@ -236,6 +237,11 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
       if (isVideo) {
         await pressCursor(page);
       }
+      if (isVideo && step.scroll_after) {
+        // Hash navigations (e.g. /service#contact) natively jump to the anchor;
+        // hold the viewport at the top so the eased scroll is the only motion.
+        await lockScrollToTop(page);
+      }
       await locator.click({ force: step.click_force ?? false });
       await clearHighlights(page);
       await page.waitForLoadState('domcontentloaded');
@@ -253,7 +259,8 @@ async function runStep(page: Page, step: FlowStep, options: RunStepOptions): Pro
           await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
           await waitForPageReady(page);
           await pauseForVideo(page, 200);
-          await resetScrollToTop(page);
+          await releaseScrollLock(page);
+          await ensureAtTop(page);
         }
         if (narration && deferNarration) {
           await showStepLabel(narration);
