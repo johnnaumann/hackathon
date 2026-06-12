@@ -187,19 +187,4 @@ Implementation notes worth knowing before editing `src/`:
 - **`page-shims.ts` is required.** tsx/esbuild's `keepNames` compiles named inner functions into `__name(...)` helper calls; Playwright serialises injected functions without that helper, so a no-op `window.__name` shim is installed as the first init script.
 - **Trim is re-encoded.** Stream-copy trimming can only cut on keyframes, which leaked the cookie banner into the opening frames. The trim, fades, and card concat happen in a single ffmpeg encode (`crf 20`, `yuv420p`, `+faststart` on mp4).
 
-### Higher-polish video options (future)
-
-| Tool | What it adds beyond this POC |
-|------|------------------------------|
-| [playwright-recast](https://github.com/ThePatriczek/playwright-recast) | Animated cursor, zoom, TTS narration from Playwright traces |
-| [Demo Machine](https://github.com/45ck/demo-machine) | YAML-driven polish, quality reports, MCP authoring |
-| [ScreenCI](https://github.com/screenci/screenci) | Playwright-style `.video.ts` scripts with hosted rendering |
-
-## Next steps (from research doc)
-
-- [x] Add AI voiceover (TTS) synced to `captions.srt` via ffmpeg
-- [ ] Add CI job to regenerate guides on schedule or deploy
-- [ ] LLM layer to refine step descriptions from DOM context
-- [ ] Visual diff on screenshot changes in PRs
-
 See [docs/web-flow-documentation-research.md](docs/web-flow-documentation-research.md) for the full tooling landscape and the original plan.
